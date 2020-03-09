@@ -8,13 +8,6 @@ cells <- paste0("../data/", experiment_id, "/cells.tif")
 Fe <- paste0("../data/", experiment_id, "/Fe.tif")
 S <- paste0("../data/", experiment_id, "/S.tif")
 
-#function to read image files with magick, convert color images to grayscale and equalize
-equalizer <- function(image_path){
-  image_read(image_path) %>%
-    image_quantize(colorspace = 'gray') %>%
-    image_equalize()
-}
-
 
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
   if(equalizer == T){
