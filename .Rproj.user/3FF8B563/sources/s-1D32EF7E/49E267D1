@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583719094395.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "49E267D1",
+    "lastKnownWriteTime" : 1583719404,
+    "last_content_update" : 1583719404410,
+    "path" : "~/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/image_stats.R",
+    "project_path" : "image_stats.R",
+    "properties" : {
+        "cursorPosition" : "9,0",
+        "scrollLine" : "6"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
