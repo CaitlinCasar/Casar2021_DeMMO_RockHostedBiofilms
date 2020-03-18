@@ -4,13 +4,12 @@
 print("This script was created by Caitlin Casar. DataStitchR stitches panoramic images of SEM images coupled to 
       x-ray energy dispersive spectroscopy.")
 
+#user should run this script in the appropriate directory, in this example the working directory should be "example_dataset" from https://github.com/CaitlinCasar/dataStitcher. 
+
 #load dependencies 
 print("Loading script dependencies: raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc...")
 pacman::p_load(raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc)
 print("...complete.")
-
-#user should run this script in the appropriate directory 
-setwd("~/Desktop/dataStitcher/example_dataset")
 
 #create list all sub-directories within main directory
 directories <- list.files(full.names = F , recursive =F)
@@ -19,7 +18,6 @@ positions <- str_extract(dir("SEM_images", pattern = "*.tif"),  "-?\\d")
 
 #set image coordinates
 xy<- read_delim("../coordinates.txt", delim = "\t")
-#xy <- read_delim(opt$file, delim = "\t")
 
 # create base SEM image ---------------------------------------------------
 
@@ -39,7 +37,6 @@ for(i in 1:length(SEM_images)){
   image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
   values(image_raster) <- values(image)
   SEM_panorama[[i]] <- image_raster
-  #plot(image_raster, asp=1)
 }
 SEM_panorama_merged <- do.call(merge, SEM_panorama)
 print("...complete.")
@@ -49,8 +46,6 @@ remove(list = c("SEM_panorama", "SEM_image_path", "SEM_images", "image", "image_
 
 #optinal plot to check if SEM image merge looks correct 
 #plot(SEM_panorama_merged, col = gray.colors(10, start = 0.3, end = 0.9, gamma = 2.2, alpha = NULL))
-
-
 
 # stitch xray images ------------------------------------------------------
 
@@ -72,24 +67,16 @@ for(j in 1:length(directories)){
       image <- files[i] %>% image_read() %>% 
         image_quantize(colorspace = 'gray') %>% 
         image_equalize() 
-      #print("...equalizing complete.")
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
-      #print("...image write complete.")
       image <- raster(temp_file) %>%
         cut(breaks = c(-Inf, 150, Inf)) - 1
-      #print("...rasterization complete.")
       image <- aggregate(image, fact=4)
-      #print("...downsampling complete.")
       image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
       image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
       values(image_raster) <- values(image)
-      #print("...final raster complete.")
       panorama[[xy_id[i]]] <- image_raster
-      #print("...appended to panorama queue.")
-      #print("...complete.")
     }
-    #if(length(compact(panorama))>1){
       empty_xy_id <- which(!positions %in% str_extract(files, "-?(?<![Kα1||Kα1_2])\\d+"))
       if(length(empty_xy_id) > 0){
         for(k in 1:length(empty_xy_id)){
@@ -97,14 +84,10 @@ for(j in 1:length(directories)){
           empty_raster <- setExtent(raster(nrows = 704, ncols = 1024), empty_raster_extent, keepres = F)
           values(empty_raster) <- 0
           panorama[[empty_xy_id[k]]] <- empty_raster
-          #print("...empty raster complete.")
         }
       }
       panorama_merged <- do.call(merge, panorama)
-      #print("...raster stitching complete.")
       xray_brick_list[[j]] <- panorama_merged
-      #print("...stitched rasters appended to brick list.")
-      #print(paste0("...element ", j, " of ", length(directories), "complete."))
   }
 }
 
@@ -218,23 +201,4 @@ dev.off()
 
 print("...complete.")
 
-
-# old plotting code ----------------------------------------------------------------
-
-#level plot
-#zeroCol <-NA 
-# element_theme <- list()
-# for (i in 1:length(names(xray_brick))) {
-#   id <- which(names(element_colors) %in% names(xray_brick)[i])
-#   element_theme[[i]] <- rasterTheme(region = c(zeroCol, element_colors[[id]]))
-# }
-# 
-# SEM_plot <- levelplot(SEM_panorama_merged, par.settings = GrTheme, margin = FALSE)
-# xray_plots <- list()
-# for(n in 1:length(names(xray_brick))){
-#   assign(paste(names(xray_brick)[n], "plot", sep = "_"), 
-#          levelplot(xray_brick[[n]], par.settings = element_theme[[n]], margin = FALSE, alpha.regions = 0.35))
-#   xray_plots[[n]] <- paste(names(xray_brick)[n], "plot", sep = "_")
-# }
-# 
-# eval(parse(text=paste0(c("SEM_plot", unlist(xray_plots)), collapse = "+")))
+remove(list = ls())
