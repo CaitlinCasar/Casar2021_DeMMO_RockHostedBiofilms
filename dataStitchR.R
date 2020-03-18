@@ -13,7 +13,7 @@ print("...complete.")
 
 #create list all sub-directories within main directory
 directories <- list.files(full.names = F , recursive =F)
-directories <- directories[!str_detect(directories, "Unknown|Os|SEM|.tif|.pdf")]
+directories <- directories[!str_detect(directories, "Unknown|Os|SEM|.tif|.pdf|.gri|.grd")]
 positions <- str_extract(dir("SEM_images", pattern = "*.tif"),  "-?\\d") 
 
 #set image coordinates
