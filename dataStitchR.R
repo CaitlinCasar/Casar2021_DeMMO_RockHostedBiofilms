@@ -1,14 +1,13 @@
 #!/usr/bin/env Rscript
 
 #foreword 
-print("This script was created by Caitlin Casar. DataStitchR stitches panoramic images of SEM images coupled to 
-      x-ray energy dispersive spectroscopy.")
+print("This script was created by Caitlin Casar. DataStitchR stitches panoramic images of SEM images coupled to x-ray energy dispersive spectroscopy.")
 
 #user should run this script in the appropriate directory, in this example the working directory should be "example_dataset" from https://github.com/CaitlinCasar/dataStitcher. 
 
 #load dependencies 
-print("Loading script dependencies: raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc...")
-pacman::p_load(raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc)
+print("Loading script dependencies: raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc, cowplot...")
+pacman::p_load(raster, rdgal, magick, tidyverse, rasterVis, ggnewscale, Hmisc, cowplot)
 print("...complete.")
 
 #create list all sub-directories within main directory
@@ -144,8 +143,8 @@ names(element_colors) <- c("H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F", 
                            "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf",
                            "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt")
 
-xray_frame <- as.data.frame(xray_brick, xy=TRUE) %>%
-     gather(element, value, Al:Si)
+xray_frame <- gather(element, value, colnames(xray_frame)[3]:colnames(xray_frame)[ncol(xray_frame)])
+
 
 
 element_plotter<-function(coord_frame, brick, SEM_image, colors){

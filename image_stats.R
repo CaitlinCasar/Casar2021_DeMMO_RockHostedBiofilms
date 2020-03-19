@@ -1,6 +1,7 @@
 pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager,ggnewscale,  magick, stars, fasterRaster, ggplot2, cowplot, tidyverse, rgdal, rasterVis)
 
-experiment_id <- "DeMMO3/D3T13exp_Dec2019_Poorman"
+setwd("~/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data")
+experiment_id <- "DeMMO1/D1T1exp_Dec2019_Poorman"
 
 #assign image file paths 
 base <- paste0("../data/", experiment_id, "/transect.tif")
