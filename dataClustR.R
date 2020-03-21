@@ -1,5 +1,45 @@
+suppressPackageStartupMessages(require(optparse))
+
+option_list = list(
+  make_option(c("-f", "--file"), action="store", default=getwd(), type='character',
+              help="Name of brick file."),
+  make_option(c("-o", "--out"), action="store", default=NA, type='character',
+              help="Output file directory. This is where your x-ray raster brick and output figures will be saved."),
+  make_option(c("-n", "--name"), action="store", default=NA, type='character',
+              help="Optional name for output files."),
+  make_option(c("-b", "--base-images"), action="store", default=NA, type='character',
+              help="SEM image file directory."),
+  make_option(c("-c", "--coords"), action="store", default=NA, type='character',
+              help="Tab-delimited file of xy coordinates for each image. A third column should denote stitching positions that correspond to the file names for each image."),
+  make_option(c("-u", "--use-positions"), action="store", default="-?(?<![Kα1||Kα1_2])\\d+", type='character',
+              help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
+  make_option(c("-z", "--z-format"), action="store", default="*", type='character',
+              help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
+  make_option(c("-m", "--make"), action="store", default="*", type='character',
+              help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
+  make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
+              help="Optional regex pattern of x-ray file directories to exclude from stitiching, i.e. the element your sample was coated with."),
+  make_option(c("-d", "--drop"), action="store", default=NA, type='character',
+              help="Optional regex pattern of files to exclude from x-ray data stitching."),
+  make_option(c("-y", "--y-exclude"), action="store", default=NA, type='character',
+              help="Optional regex pattern of files to exclude from SEM image stitiching. You do not need to specify this unless you are generating a PDF output."),
+  make_option(c("-v", "--verbose"), action="store_true", default=TRUE,
+              help="Print updates to console [default %default]."),
+  make_option(c("-q", "--quiet"), action="store_false", dest="verbose",
+              help="Do not print anything to the console."),
+  make_option(c("-p", "--pdf"), action="store", default=FALSE,
+              help="Generate PDF of x-ray brick colored by element superimposed on the SEM image, default is TRUE [default %default].")  
+)
+opt = parse_args(OptionParser(option_list=option_list))
+
+
+
+
 #load dependencies
-pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager,ggnewscale,  magick, stars, fasterRaster, ggplot2, cowplot, tidyverse, rgdal, rasterVis)
+pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager,ggnewscale,  magick, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
+
+
+
 
 #set working directory
 setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO1/D1T1exp_Dec2019_Poorman")
@@ -15,21 +55,24 @@ cells <- "cells.tif"
 #function for rasterizing or polygonizing
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
   if(equalizer == T){
+    message("reading image...")
     image <- image_path %>% image_read() %>% image_quantize(colorspace = 'gray') %>% image_equalize() 
     image
     if(to_raster == T){
+      message("rasterizing...")
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
       image_raster <- raster(temp_file) %>%
         cut(breaks = c(-Inf, 150, Inf)) - 1
       image_raster 
       if(polygonize == TRUE){
+        message("polygonizing...")
         image_polygon <- rasterToPolygons(image_raster, function(x){x == 0}, dissolve = TRUE) %>% 
           st_as_sf() 
         if(drop_and_fill == TRUE){
+          message("processing drop and fill...")
           image_polygon_drop_fill <- image_polygon %>% 
-            #st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
-            st_set_crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0 +units=m") #need to check that this works, otherwise reproject 
+            st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
             fill_holes(threshold = 500) %>%
             drop_crumbs(threshold = 25) %>% #raster to polygon was creating some tiny polygons 
             st_cast("POLYGON")
@@ -51,6 +94,8 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
 #generate cell polygons
 cells_polygon <- image_to_polygon(cells)
 
+
+#some kind of bug in smoothr won't let me change projection values in function, have to reproject after fill/drop holes 
 cells_polygon  <- cells_polygon %>% st_set_crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 
 # cell_image <- cells %>%
@@ -62,7 +107,7 @@ cells_polygon  <- cells_polygon %>% st_set_crs("+proj=longlat +datum=WGS84 +ellp
 # cell_raster <- raster(temp_file) %>%
 #   cut(breaks = c(-Inf, 150, Inf)) - 1
 
-#check plotting
+#check plotting if cells are rasterized
 # cells_filtered <- as.data.frame(cells_polygon, xy=TRUE) %>%
 #   filter(layer == 0)
 # rasterVis::gplot(flip(xray_brick[[1]], direction = 'y')) +
@@ -71,13 +116,13 @@ cells_polygon  <- cells_polygon %>% st_set_crs("+proj=longlat +datum=WGS84 +ellp
 #   coord_fixed() +
 #   geom_tile(cells_filtered, mapping = aes(x, y), fill = "gold")
 
-
-rasterVis::gplot(xray_brick[[1]]) +
-  geom_tile(aes(fill = value)) +
-  scale_fill_gradient(low = 'black', high = 'white') +
-  coord_fixed() +
-  geom_sf(data = cells_polygon_projected, inherit.aes = F, fill = "orange", lwd = 0) +
-  coord_sf(datum = NA)
+#check plotting if cells are polygons
+# rasterVis::gplot(xray_brick[[1]]) +
+#   geom_tile(aes(fill = value)) +
+#   scale_fill_gradient(low = 'black', high = 'white') +
+#   coord_fixed() +
+#   geom_sf(data = cells_polygon_projected, inherit.aes = F, fill = "orange", lwd = 0) +
+#   coord_sf(datum = NA)
 
 #function to draw ellipses around cell polygons, measure major and minor axes 
 ellipsoid_fun <- function(data){
@@ -104,7 +149,7 @@ cells_polygon_stats <- cells_polygon_stats %>%
                            roundness >= 1.12 & roundness < 5 ~"rod",
                            TRUE ~ "filament"))
 
-cells_polygon_totals <- cells_polygon_stats %>% 
+cell_summary <- cells_polygon_stats %>% 
   as.data.frame %>%
   group_by(shape) %>% 
   summarise(value = n()) %>%
@@ -258,57 +303,6 @@ message("Generating reports...")
 #   select(x, y) %>%
 #   bind_cols(xray_brick_summary)
 
-directories <- list.dirs("/Users/Caitlin/Desktop/dataStitcher/example_dataset", full.names = T , recursive =F)
-directories <- directories[!str_detect(directories, "Unknown|SEM|Os")]
-
-overview_brick_list <- list()
-overview_data <- list()
-
-for(i in 1:length(directories)){
-  path = directories[i]
-  files <- list.files(path, full.names = T, pattern = "overview.*tif")
-  if(length(files) >0){
-    overview_data[[i]] <- str_extract(path, "([^/]+$)")
-    message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
-    image <- files %>% image_read() %>% 
-      image_quantize(colorspace = 'gray') %>% 
-      image_equalize() 
-    temp_file <- tempfile()
-    image_write(image, path = temp_file, format = 'tiff')
-    image <- raster(temp_file) %>%
-      cut(breaks = c(-Inf, 150, Inf)) - 1
-    image <- aggregate(image, fact=4)
-    overview_brick_list[[i]] <- image
-  }
-}
-
-message("Stacking complete. Creating x-ray brick...")
-overview_brick <- do.call(brick, na.omit(overview_brick_list))
-names(overview_brick) <- unlist(overview_data)
-message("...complete.")
-
-
-#bulk chemistry of overview area
-overview_summary <- as.data.frame(overview_brick, xy = T)%>%
-  select(-x, -y) %>%
-  colSums(na.rm = T) %>%
-  as.data.frame() %>%
-  rename_(value = ".") %>%
-  mutate(total = sum(value),
-         value = (value/total)*100,
-         element = names(overview_brick))
-
-
-#bulk chemistry of transect 
-xray_summary <- as.data.frame(xray_brick, xy = T)%>%
-  select(-x, -y) %>%
-  colSums(na.rm = T) %>%
-  as.data.frame() %>%
-  rename_(value = ".") %>%
-  mutate(total = sum(value),
-         value = (value/total)*100,
-         element = names(xray_brick))
-
 
 # spatial stats -----------------------------------------------------------
 #https://mgimond.github.io/Spatial/point-pattern-analysis-in-r.html
@@ -356,18 +350,23 @@ rasterVis::gplot(SEM_panorama_merged) +
 #Where K falls under the theoretical Kpois line the points are more clustered at distance r, and vis versa
 
 cell_kest <- Kest(cell_centroids_ppp)
-plot(cell_kest, main=NULL, las=1, legendargs=list(cex=0.8, xpd=TRUE, inset=c(1.01, 0) ))
+plot(cell_kest, main=NULL, las=1, legendargs=list(cex=0.8, xpd=F, inset=c(1.01, 0) ))
+cell_kest %>%
+  gather(type, value, theo:iso) %>%
+  ggplot(aes(x = r)) +
+  geom_line(aes(y = value, color = type))
 
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
 plot(ANN ~ eval(1:100), type="b", main=NULL, las=1)
 
 ann.p <- mean(nndist(cell_centroids_ppp, k=1))
-ann.p
+
+
+
 
 
 #generate random distribution of cells as null model
-n     <- 599L               # Number of simulations
-ann.r <- vector(length = n) # Create an empty object to be used to store simulated ANN values
+ann.r <- vector(length = 599L) # Create an empty object to be used to store simulated ANN values
 for (i in 1:n){
   rand.p   <- rpoint(n=cell_centroids_ppp$n, win=window)  # Generate random point locations
   ann.r[i] <- mean(nndist(rand.p, k=1))  # Tally the ANN values
@@ -378,8 +377,90 @@ plot(rand.p, pch=16, main=NULL, cols=rgb(0,0,0,0.5))
 hist(ann.r, main=NULL, las=1, breaks=40, col="bisque", xlim=range(ann.p, ann.r))
 abline(v=ann.p, col="blue")
 
+#test whether S distribution explains cell distribution 
+n     <- 599L
+ann.r <- vector(length=n)
+for (i in 1:n){
+  rand.p   <- rpoint(n=cell_centroids_ppp$n, f=S_im) 
+  ann.r[i] <- mean(nndist(rand.p, k=1))
+}
+
+Window(rand.p) <- window  # Replace raster mask with ma.km window
+plot(rand.p, pch=16, main=NULL, cols=rgb(0,0,0,0.5))
+
+hist(ann.r, main=NULL, las=1, breaks=40, col="bisque", xlim=range(ann.p, ann.r))
+abline(v=ann.p, col="blue")
+
+N.greater <- sum(ann.r > ann.p)
+p <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
+p
+
+
 #more resources 
 #https://eburchfield.github.io/files/Point_pattern_LAB.html
+#https://rspatial.org/analysis/analysis.pdf
+#https://spatstat.org/SSAI2017/slides/slides.pdf
 
 
 
+# summarize data ----------------------------------------------------------
+
+cell_summary <- cell_summary %>%
+  bind_rows(data.frame(observation = "ANN", value = ann.p))
+
+
+
+
+directories <- list.dirs("/Users/Caitlin/Desktop/dataStitcher/example_dataset", full.names = T , recursive =F)
+directories <- directories[!str_detect(directories, "Unknown|SEM|Os")]
+
+overview_brick_list <- list()
+overview_data <- list()
+
+for(i in 1:length(directories)){
+  path = directories[i]
+  files <- list.files(path, full.names = T, pattern = "overview.*tif")
+  if(length(files) >0){
+    overview_data[[i]] <- str_extract(path, "([^/]+$)")
+    message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
+    image <- files %>% image_read() %>% 
+      image_quantize(colorspace = 'gray') %>% 
+      image_equalize() 
+    temp_file <- tempfile()
+    image_write(image, path = temp_file, format = 'tiff')
+    image <- raster(temp_file) %>%
+      cut(breaks = c(-Inf, 150, Inf)) - 1
+    image <- aggregate(image, fact=4)
+    overview_brick_list[[i]] <- image
+  }
+}
+
+message("Stacking complete. Creating x-ray brick...")
+overview_brick <- do.call(brick, na.omit(overview_brick_list))
+names(overview_brick) <- unlist(overview_data)
+message("...complete.")
+
+
+#bulk chemistry of overview area
+
+overview_summary <- as.data.frame(overview_brick, xy = T) %>%
+  replace(is.na(.), 0) %>%
+  summarise_all(funs(sum)) %>%
+  gather(element, `wt%`, -x, -y) %>%
+  select(-x, -y) %>% 
+  mutate(`wt%` = `wt%`/sum(`wt%`)*100,
+         type = "overview") %>%
+  spread(type, `wt%`)
+
+#bulk chemistry of transect 
+transect_summary <- as.data.frame(xray_brick, xy = T) %>%
+  replace(is.na(.), 0) %>%
+  summarise_all(funs(sum)) %>%
+  gather(element, `wt%`, -x, -y) %>%
+  select(-x, -y) %>% 
+  mutate(`wt%` = `wt%`/sum(`wt%`)*100,
+         type = "transect") %>%
+  spread(type, `wt%`)
+
+element_summary <- overview_summary %>%
+  full_join(transect_summary)
