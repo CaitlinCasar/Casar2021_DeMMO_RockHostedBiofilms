@@ -49,6 +49,19 @@ setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/
 #xray_brick_equalized_not_thresholded <- brick("equalized_not_thresholded/example_brick.grd") #same as thresholded 
 xray_brick <- brick("equalized_and_thresholded/example_brick.grd") #7% SI
 
+xray_to_polygon <- function(brick){
+    message(paste0("Polygonizing ", names(brick)), "...")
+    brick %>%
+    rasterToPolygons(dissolve = TRUE) %>% 
+    st_as_sf() %>%
+    st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
+    drop_crumbs(threshold = 100) %>%
+    fill_holes(threshold = 100)
+}
+
+test <-  lapply(as.list(xray_brick)[1:2], xray_to_polygon)
+  
+
 #cell image path
 cells <- "cells.tif"
 
@@ -138,6 +151,11 @@ cell_centroids_coords <- cell_centroids %>%
 
 
 # spatial stats -----------------------------------------------------------
+message("Calculating statistics...")
+
+
+
+# quadrat stats -----------------------------------------------------------
 
 #create ppp for point pattern analysis in spatstat
 window <- owin(xrange = c(st_bbox(cell_centroids)$xmin, st_bbox(cell_centroids)$xmax),
@@ -150,13 +168,16 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
 cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
   rename(intensity = Freq)
 
+#*******make nx ny dynamic*********
+
 cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx= 12, ny=3), xy=T) %>%
   bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:36), rep_len(1:12, length(1:36))))))) %>%
   left_join(cell_dens_intensity) %>%
   select(Freq, grid_id, intensity) 
   
 
-##point process model
+
+# point process modeling --------------------------------------------------
 
 #calculate spatial randomness 
 #do we expect to see clustering?
@@ -164,52 +185,90 @@ cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx= 12, ny=3), x
 
 cell_kest <- Kest(cell_centroids_ppp)
 
-cell_kest %>%
+kest_plot <- cell_kest %>%
   gather(type, value, theo:iso) %>%
   ggplot(aes(x = r)) +
   geom_line(aes(y = value, color = type))
+
+# generate PDF ------------------------------------------------------------
+message("Generating Kest plot...")
+
+sample_id <- "D1T1exp_Dec2019_Poorman"
+pdf(paste0(sample_id, "_Kest_plot.pdf"),
+    width = 13.33, 
+    height = 7.5)
+
+print(element_plot_with_legend)
+
+dev.off()
+
+message("...complete.")
+
+
+# Calculate ANN -----------------------------------------------------------
 
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
 plot(ANN ~ eval(1:100), type="b", main=NULL, las=1)
 
 ann.p <- mean(nndist(cell_centroids_ppp, k=1))
 
+element_probabilities <- list()
 #generate random distribution of cells as null model
-ann.r <- vector(length = 599L) # Create an empty object to be used to store simulated ANN values
-for (i in 1:n){
+n = 599L
+ann.r <- vector(length=n) # Create an empty object to be used to store simulated ANN values
+for (i in 1:599L){
   rand.p   <- rpoint(n=cell_centroids_ppp$n, win=window)  # Generate random point locations
   ann.r[i] <- mean(nndist(rand.p, k=1))  # Tally the ANN values
 }
 
-plot(rand.p, pch=16, main=NULL, cols=rgb(0,0,0,0.5))
+N.greater <- sum(ann.r > ann.p)
+element_probabilities[[length(names(xray_brick)) + 1]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
 
-hist(ann.r, main=NULL, las=1, breaks=40, col="bisque", xlim=range(ann.p, ann.r))
-abline(v=ann.p, col="blue")
 
-#test whether S distribution explains cell distribution 
-n     <- 599L
-ann.r <- vector(length=n)
-for (i in 1:n){
-  rand.p   <- rpoint(n=cell_centroids_ppp$n, f=S_im) 
-  ann.r[i] <- mean(nndist(rand.p, k=1))
+#test whether element distribution explains cell distribution 
+
+#this loop takes ~6 minutes per element...
+for(j in 1:length(names(xray_brick))){
+  message(paste0("Calculating covariate stats for ", names(xray_brick)[j], ", element ", j, " of ", length(names(xray_brick)), "..."))
+  n = 599L
+  ann.r <- vector(length=n)
+  xray_im <- as.im(xray_brick[[j]]) %>%
+    rescale(22.15, "μm")
+  for (i in 1:n){
+    rand.p   <- rpoint(n=cell_centroids_ppp$n, f = xray_im) 
+    ann.r[i] <- mean(nndist(rand.p, k=1))
+  }
+  N.greater <- sum(ann.r > ann.p)
+  element_probabilities[[j]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
 }
 
-Window(rand.p) <- window  # Replace raster mask with ma.km window
-plot(rand.p, pch=16, main=NULL, cols=rgb(0,0,0,0.5))
-
-hist(ann.r, main=NULL, las=1, breaks=40, col="bisque", xlim=range(ann.p, ann.r))
-abline(v=ann.p, col="blue")
-
-N.greater <- sum(ann.r > ann.p)
-p <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
-p
+#point process model
+#test whether elements explain cell densities
 
 
-#more resources 
-#https://eburchfield.github.io/files/Point_pattern_LAB.html
-#https://rspatial.org/analysis/analysis.pdf
-#https://spatstat.org/SSAI2017/slides/slides.pdf
+element_combos = list()
+for(element in 1:length(names(xray_brick))){
+  element_combos = append(element_combos, combn(names(xray_brick), element, simplify = F))
+}
 
+
+element_probabilities <- list()
+for(k in 1:length(element_combos)){
+  im_list <- list()
+  for(z in 1:length(element_combos[[k]])){
+    id = element_combos[[k]][z]
+    im_list[[z]] <- assign(paste0(id, "_im"), as.im(xray_brick[[id]]) %>% rescale(22.15, "μm"))
+  }
+  print(parse(text=(paste(im_list, collapse = "+"))))
+  break
+  ppm1 <- eval(parse(text=(paste(ppm(cell_centroids_ppp ~ paste(im_list, collapse = "+"))))))
+  ppm0 <- ppm(cell_centroids_ppp ~ 1)
+  element_probabilities[[k]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+}
+
+point_process_model1 <- ppm(cell_centroids_ppp ~ S_im + Fe_im)
+point_process_model0 <- ppm(cell_centroids_ppp ~ 1)
+anova(point_process_model0, point_process_model1, test="LRT")
 
 
 # summarize data ----------------------------------------------------------
