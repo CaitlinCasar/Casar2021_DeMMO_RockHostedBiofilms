@@ -131,14 +131,17 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
   rescale(22.15, "μm")
 
 #compute quadrat grid density and intensity -- add dynamic argument for nx/ny 
-cells_quadrat <- quadratcount(cell_centroids_ppp, nx= 12, ny=3)
+quad_nx = 12
+quad_ny = 3
+
+cells_quadrat <- quadratcount(cell_centroids_ppp, nx = quad_nx, ny = quad_ny)
 cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
   rename(intensity = Freq)
 
 #*******make nx ny dynamic*********
 
-cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx= 12, ny=3), xy=T) %>%
-  bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:36), rep_len(1:12, length(1:36))))))) %>%
+cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx = quad_nx , ny = quad_ny), xy=T) %>%
+  bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:(quad_nx*quad_ny)), rep_len(1:quad_nx, length(1:(quad_nx*quad_ny)))))))) %>%
   left_join(cell_dens_intensity) %>%
   select(Freq, grid_id, intensity) 
   
@@ -451,7 +454,7 @@ message("...complete.")
 message("Generating quadrat plot...")
 
 #****************************make grid cell sizes dynamic**************************
-quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/12, extent(SEM_image)[4]/3)) %>% 
+quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/quad_nx, extent(SEM_image)[4]/quad_ny)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
 
 quadrat_grid_poly <- as.data.frame(st_coordinates(quadrat_grid)) %>%
