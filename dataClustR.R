@@ -72,7 +72,7 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
           message("processing drop and fill...")
           image_polygon_drop_fill <- image_polygon %>% 
             st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
-            fill_holes(threshold = 500) %>%
+            fill_holes(threshold = 100) %>%
             drop_crumbs(threshold = 25) %>% #raster to polygon was creating some tiny polygons 
             st_cast("POLYGON")
           image_polygon_drop_fill
@@ -100,7 +100,7 @@ rasterVis::gplot(SEM_image) +
   scale_fill_gradient(low = 'black', high = 'white') +
   coord_fixed() +
   geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
-  #geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+  geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
   coord_sf(datum = NA)
 
 
@@ -109,9 +109,9 @@ cell_centroids <- st_centroid(cells_polygon)
 
 cell_centroids_coords <- cell_centroids %>%
   st_coordinates() %>%
-  as.data.frame() %>%
-  mutate(shape = cells_polygon_stats$shape,
-         area = cells_polygon_stats$area) 
+  as.data.frame() #%>% #this code comes before cells_polygon_stats defined
+  #mutate(shape = cells_polygon_stats$shape,
+         #area = cells_polygon_stats$area) 
 
 
 
@@ -131,6 +131,7 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
   rescale(22.15, "μm")
 
 #compute quadrat grid density and intensity -- add dynamic argument for nx/ny 
+cells_quadrat <- quadratcount(cell_centroids_ppp, nx= 12, ny=3)
 cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
   rename(intensity = Freq)
 
@@ -338,31 +339,6 @@ element_summary <- overview_summary %>%
 # plot the data -----------------------------------------------------------
 
 #generate element map with cells 
-xy <- read_delim("coordinates.txt", delim = "\t")
-
-SEM_images <- list.files("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO1/D1T1exp_Dec2019_Poorman/SEM_images/", full.names = T)
-SEM_images <- SEM_images[!str_detect(SEM_images, "overview")]
-SEM_panorama <- list()
-
-
-message("Stitching SEM images into panorama...")
-for(i in 1:length(SEM_images)){
-  image <- SEM_images[i] %>% image_read() %>%
-    image_quantize(colorspace = 'gray') %>%
-    image_equalize()
-  temp_file <- tempfile()
-  image_write(image, path = temp_file, format = 'tiff')
-  image <- raster(temp_file)
-  image_extent <- extent(matrix(c(xy$x[i], xy$x[i] + 1024, xy$y[i], xy$y[i]+704), nrow = 2, ncol = 2, byrow = T))
-  image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
-  values(image_raster) <- values(image)
-  SEM_panorama[[i]] <- image_raster
-}
-SEM_panorama_merged <- do.call(merge, SEM_panorama)
-message("...complete.")
-
-
-
 
 message("Generating element plot...")
 # Set color palette
@@ -445,10 +421,10 @@ element_plot_legend <- data.frame(element = unique(xray_frame$element)) %>%
         legend.text = ggplot2::element_text(size = 8))
 
 ##element plot with no density contours
-element_plot <- element_plotter(xray_frame, xray_brick, SEM_panorama_merged, element_colors, density = F)
+element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors, density = F)
 
 ##element plot with density contours
-element_plot <- element_plotter(xray_frame, xray_brick, SEM_panorama_merged, element_colors)
+element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors)
 
 element_plot_with_legend <- plot_grid(
   element_plot, 
@@ -475,20 +451,20 @@ message("...complete.")
 message("Generating quadrat plot...")
 
 #****************************make grid cell sizes dynamic**************************
-quadrat_grid <- st_make_grid(SEM_panorama_merged, cellsize = c(extent(SEM_panorama_merged)[2]/12, extent(SEM_panorama_merged)[4]/3)) %>% 
+quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/12, extent(SEM_image)[4]/3)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
 
 grid_lab <- st_centroid(quadrat_grid) %>% cbind(st_coordinates(.)) %>% left_join(cells_quadrat)
 
 # view the sampled points, polygons and grid
-quadrat_plot <- rasterVis::gplot(SEM_panorama_merged) +
+quadrat_plot <- rasterVis::gplot(SEM_image) +
   geom_tile(aes(fill = value)) +
   scale_fill_gradient(low = 'gray', high = 'white') +
   coord_fixed() +
   ggnewscale::new_scale_fill() +
   geom_sf(data = quadrat_grid, inherit.aes = F, aes(fill = intensity), alpha = 0.5, lwd = 0.3, color = "black") +
   scale_fill_viridis_c() +
-  geom_sf(data = cells_polygon_projected, inherit.aes = F, fill = "red", lwd = 0) + 
+  geom_sf(data = cells_polygon, inherit.aes = F, fill = "red", lwd = 0) + 
   geom_text(data = grid_lab, aes(x = X, y = Y, label = Freq), size = 3, color = "black", fontface = "bold") +
   coord_sf(datum = NA)  +
   labs(x = "") +
