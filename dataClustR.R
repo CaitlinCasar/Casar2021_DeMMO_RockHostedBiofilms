@@ -34,37 +34,22 @@ opt = parse_args(OptionParser(option_list=option_list))
 
 
 
-
 #load dependencies
 pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager,ggnewscale,  magick, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
-
-
 
 
 #set working directory
 setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO1/D1T3rep_Dec2019_Ellison/")
 
 #load xray raster brick 
-#xray_brick_not_equalized_or_thresholded <- brick("not_equalized/example_brick.grd") #wrong, Si showing zero
-#xray_brick_equalized_not_thresholded <- brick("equalized_not_thresholded/example_brick.grd") #same as thresholded 
 xray_brick <- brick("D1T3rep_Dec2019_brick.grd") 
 
-#this is where I was trying to define mineralogy based on polygon intersections, can cut this out
-# xray_to_polygon <- function(brick){
-#     message(paste0("Polygonizing ", names(brick)), "...")
-#     brick %>%
-#     rasterToPolygons(dissolve = TRUE) %>% 
-#     st_as_sf() %>%
-#     st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
-#     drop_crumbs(threshold = 100) %>%
-#     fill_holes(threshold = 100)
-# }
-# 
-# test <-  lapply(as.list(xray_brick)[1:2], xray_to_polygon)
-#   
+#load base SEM image
+SEM_image <- raster("D1T3rep_Dec2019_SEM_pano.tif")
 
-#cell image path
-cells <- "test_data_for_optimization/cells.tif"
+#cell and biogenic feature image paths
+cells <- "cells.tif"
+biogenic <- "biogenic.tif"
 
 #function for rasterizing or polygonizing
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
@@ -107,36 +92,15 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
 
 #generate cell polygons
 cells_polygon <- image_to_polygon(cells)
-# cells_raster <- image_to_polygon(cells, polygonize = F)
-
-#some kind of bug in smoothr won't let me change projection values in function, have to reproject after fill/drop holes 
-#doesn't affect plot, can remove this code
-#cells_polygon_proj  <- cells_polygon %>% st_set_crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-
-# cell_image <- cells %>%
-#   image_read() %>% 
-#   image_quantize(colorspace = 'gray') %>% 
-#   image_equalize() 
-# temp_file <- tempfile()
-# image_write(cell_image, path = temp_file, format = 'tiff')
-# cell_raster <- raster(temp_file) %>%
-#   cut(breaks = c(-Inf, 150, Inf)) - 1
-
-#check plotting if cells are rasterized
-# cells_filtered <- as.data.frame(cells_raster, xy=TRUE) %>%
-#   filter(layer == 0)
-# rasterVis::gplot(xray_brick[[1]]) +
-#   geom_tile(aes(fill = value)) +
-#   scale_fill_gradient(low = 'black', high = 'white') +
-#   coord_fixed() +
-#   geom_tile(cells_filtered, mapping = aes(x, y), fill = "gold")
+biogenic_polygon <- image_to_polygon(biogenic)
 
 #check plotting if cells are polygons
-rasterVis::gplot(xray_brick[[1]]) +
+rasterVis::gplot(SEM_image) +
   geom_tile(aes(fill = value)) +
   scale_fill_gradient(low = 'black', high = 'white') +
   coord_fixed() +
   geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
+  #geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
   coord_sf(datum = NA)
 
 
