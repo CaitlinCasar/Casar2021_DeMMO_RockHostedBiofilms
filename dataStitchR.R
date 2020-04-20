@@ -83,84 +83,84 @@ positions <- xy %>%
 
 # stitch xray images ------------------------------------------------------
 
-# #stitch xray images into panoramas and store in raster brick 
-# xray_brick_list <- list()
-# xray_data <- list()
-# for(j in 1:length(directories)){
-#   path = directories[j]
-#   files <- list.files(path, full.names = T, pattern = opt$z)
-#   if(!is.na(opt$d)){
-#     files <- files[!str_detect(files, opt$d)]
-#   }
-#   if(length(files) >0){
-#     xray_data[[j]] <- str_extract(path, "([^/]+$)")
-#     message(paste0("Stitching ",xray_data[[j]], " data (element ", j, " of ", length(directories), ")..."))
-#     xy_id <- which(positions[[1]] %in% str_extract(files, opt$u))
-#     panorama <- list()
-#     for(i in 1:length(files)){
-#       message(paste0("Processing image ", i, " of ", length(files), "..."))
-#       image <- files[i] %>% image_read() %>% 
-#         image_quantize(colorspace = 'gray') %>% 
-#         image_equalize() 
-#       temp_file <- tempfile()
-#       image_write(image, path = temp_file, format = 'tiff')
-#       image <- raster(temp_file) %>%
-#         cut(breaks = c(-Inf, 150, Inf)) - 1
-#       image <- aggregate(image, fact=4)
-#       image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
-#       image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
-#       values(image_raster) <- values(image)
-#       panorama[[xy_id[i]]] <- image_raster
-#     }
-#       empty_xy_id <- which(!positions[[1]] %in% str_extract(files, opt$u))
-#       if(length(empty_xy_id) > 0){
-#         for(k in 1:length(empty_xy_id)){
-#           empty_raster_extent <- extent(matrix(c(xy$x[empty_xy_id[k]], xy$x[empty_xy_id[k]] + 1024, xy$y[empty_xy_id[k]], xy$y[empty_xy_id[k]]+704), nrow = 2, ncol = 2, byrow = T))
-#           empty_raster <- setExtent(raster(nrows = 704, ncols = 1024), empty_raster_extent, keepres = F)
-#           values(empty_raster) <- 0
-#           panorama[[empty_xy_id[k]]] <- empty_raster
-#         }
-#       }
-#       panorama_merged <- do.call(merge, panorama)
-#       xray_brick_list[[j]] <- panorama_merged
-#   }
-# }
-# 
-# message("Stitching complete. Creating x-ray brick...")
-# xray_brick <- do.call(brick, xray_brick_list)
-# names(xray_brick) <- unlist(xray_data)
-# message("...complete.")
-# 
-# #write the brick 
-# message("Writing brick...")
-# 
-# 
-# if(!is.na(opt$o)){
-#   dir.create(opt$o)
-#   if(!is.na(opt$n)){
-#     out_brick <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
-#     x <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
-#   }else{
-#     out_brick <- writeRaster(xray_brick, path = opt$o, "brick.grd", overwrite=TRUE, format="raster")
-#     x <- writeRaster(xray_brick, path = opt$o, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
-#   }
-# }else{
-#   if(!is.na(opt$n)){
-#     out_brick <- writeRaster(xray_brick, paste0(opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
-#     x <- writeRaster(xray_brick, paste0(opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
-#   }else{
-#     out_brick <- writeRaster(xray_brick, "brick.grd", overwrite=TRUE, format="raster")
-#     x <- writeRaster(xray_brick, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
-#   }
-# }
-# 
-# 
-# message("...complete.")
-# 
-# #flush everything we don't need from memory
-# remove(list = c("x", "xray_brick_list", "xray_data", "empty_raster", "empty_raster_extent",
-#                 "i", "j", "k", "path", "positions", "xy_id", 
-#                 "panorama_merged", "panorama", "empty_xy_id", "files", "directories"))
+#stitch xray images into panoramas and store in raster brick 
+xray_brick_list <- list()
+xray_data <- list()
+for(j in 1:length(directories)){
+  path = directories[j]
+  files <- list.files(path, full.names = T, pattern = opt$z)
+  if(!is.na(opt$d)){
+    files <- files[!str_detect(files, opt$d)]
+  }
+  if(length(files) >0){
+    xray_data[[j]] <- str_extract(path, "([^/]+$)")
+    message(paste0("Stitching ",xray_data[[j]], " data (element ", j, " of ", length(directories), ")..."))
+    xy_id <- which(positions[[1]] %in% str_extract(files, opt$u))
+    panorama <- list()
+    for(i in 1:length(files)){
+      message(paste0("Processing image ", i, " of ", length(files), "..."))
+      image <- files[i] %>% image_read() %>% 
+        image_quantize(colorspace = 'gray') %>% 
+        image_equalize() 
+      temp_file <- tempfile()
+      image_write(image, path = temp_file, format = 'tiff')
+      image <- raster(temp_file) %>%
+        cut(breaks = c(-Inf, 150, Inf)) - 1
+      image <- aggregate(image, fact=4)
+      image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
+      image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
+      values(image_raster) <- values(image)
+      panorama[[xy_id[i]]] <- image_raster
+    }
+      empty_xy_id <- which(!positions[[1]] %in% str_extract(files, opt$u))
+      if(length(empty_xy_id) > 0){
+        for(k in 1:length(empty_xy_id)){
+          empty_raster_extent <- extent(matrix(c(xy$x[empty_xy_id[k]], xy$x[empty_xy_id[k]] + 1024, xy$y[empty_xy_id[k]], xy$y[empty_xy_id[k]]+704), nrow = 2, ncol = 2, byrow = T))
+          empty_raster <- setExtent(raster(nrows = 704, ncols = 1024), empty_raster_extent, keepres = F)
+          values(empty_raster) <- 0
+          panorama[[empty_xy_id[k]]] <- empty_raster
+        }
+      }
+      panorama_merged <- do.call(merge, panorama)
+      xray_brick_list[[j]] <- panorama_merged
+  }
+}
+
+message("Stitching complete. Creating x-ray brick...")
+xray_brick <- do.call(brick, xray_brick_list)
+names(xray_brick) <- unlist(xray_data)
+message("...complete.")
+
+#write the brick 
+message("Writing brick...")
+
+
+if(!is.na(opt$o)){
+  dir.create(opt$o)
+  if(!is.na(opt$n)){
+    out_brick <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  }else{
+    out_brick <- writeRaster(xray_brick, path = opt$o, "brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, path = opt$o, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  }
+}else{
+  if(!is.na(opt$n)){
+    out_brick <- writeRaster(xray_brick, paste0(opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  }else{
+    out_brick <- writeRaster(xray_brick, "brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  }
+}
+
+
+message("...complete.")
+
+#flush everything we don't need from memory
+remove(list = c("x", "xray_brick_list", "xray_data", "empty_raster", "empty_raster_extent",
+                "i", "j", "k", "path", "positions", "xy_id", 
+                "panorama_merged", "panorama", "empty_xy_id", "files", "directories"))
 
 
 # create base SEM image ---------------------------------------------------
@@ -223,7 +223,6 @@ remove(list = c("SEM_panorama", "SEM_images", "image", "image_extent", "image_ra
 
 # plot the data -----------------------------------------------------------
 if(opt$p){
-  
 message("Generating plot...")
 # Set color palette
 
