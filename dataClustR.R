@@ -454,6 +454,11 @@ message("Generating quadrat plot...")
 quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/12, extent(SEM_image)[4]/3)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
 
+quadrat_grid_poly <- as.data.frame(st_coordinates(quadrat_grid)) %>%
+  mutate(grid_id = rep(quadrat_grid$grid_id, 1, each=5)) %>%
+  #filter(!row_number() %% 5 == 0) %>%
+  left_join(quadrat_grid)
+
 grid_lab <- st_centroid(quadrat_grid) %>% cbind(st_coordinates(.)) %>% left_join(cells_quadrat)
 
 # view the sampled points, polygons and grid
@@ -462,7 +467,8 @@ quadrat_plot <- rasterVis::gplot(SEM_image) +
   scale_fill_gradient(low = 'gray', high = 'white') +
   coord_fixed() +
   ggnewscale::new_scale_fill() +
-  geom_sf(data = quadrat_grid, inherit.aes = F, aes(fill = intensity), alpha = 0.5, lwd = 0.3, color = "black") +
+  geom_polygon(data = quadrat_grid_poly, aes(X,Y, fill = intensity, group=grid_id), alpha = 0.5, lwd = 0.3, color = "black") +
+  #geom_sf(data = quadrat_grid, inherit.aes = F, aes(fill = intensity), alpha = 0.5, lwd = 0.3, color = "black") + # this was causing issues with aspect ratio
   scale_fill_viridis_c() +
   geom_sf(data = cells_polygon, inherit.aes = F, fill = "red", lwd = 0) + 
   geom_text(data = grid_lab, aes(x = X, y = Y, label = Freq), size = 3, color = "black", fontface = "bold") +
