@@ -46,6 +46,8 @@ option_list = list(
               help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
   make_option(c("-z", "--z-format"), action="store", default="*", type='character',
               help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
+  make_option(c("-t", "--overview"), action="store", default=NA, type='character',
+              help="Optional regex pattern of x-ray image name for large overview area, i.e. 'overview.*tif'."),
   make_option(c("-m", "--make"), action="store", default="*", type='character',
               help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
   make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
@@ -83,7 +85,7 @@ positions <- xy %>%
 
 # stitch xray images ------------------------------------------------------
 
-#stitch xray images into panoramas and store in raster brick 
+#stitch xray images into panoramas and store in raster brick
 xray_brick_list <- list()
 xray_data <- list()
 for(j in 1:length(directories)){
@@ -99,9 +101,9 @@ for(j in 1:length(directories)){
     panorama <- list()
     for(i in 1:length(files)){
       message(paste0("Processing image ", i, " of ", length(files), "..."))
-      image <- files[i] %>% image_read() %>% 
-        image_quantize(colorspace = 'gray') %>% 
-        image_equalize() 
+      image <- files[i] %>% image_read() %>%
+        image_quantize(colorspace = 'gray') %>%
+        image_equalize()
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
       image <- raster(temp_file) %>%
@@ -126,23 +128,24 @@ for(j in 1:length(directories)){
   }
 }
 
-message("Stitching complete. Creating x-ray brick...")
+message("Stitching complete. Creating transect x-ray brick...")
 xray_brick <- do.call(brick, xray_brick_list)
 names(xray_brick) <- unlist(xray_data)
 message("...complete.")
 
-#write the brick 
+
+#write the brick
 message("Writing brick...")
 
 
-if(!is.na(opt$o)){
-  dir.create(opt$o)
+if(!is.na(opt$out)){
+  dir.create(opt$out)
   if(!is.na(opt$n)){
-    out_brick <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, paste0(opt$o, "/", opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }else{
-    out_brick <- writeRaster(xray_brick, path = opt$o, "brick.grd", overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, path = opt$o, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, path = opt$out, "brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, path = opt$out, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }
 }else{
   if(!is.na(opt$n)){
@@ -157,8 +160,58 @@ if(!is.na(opt$o)){
 
 message("...complete.")
 
+if(!is.na(opt$overview)){
+  message("Stacking overview x-ray brick...")
+  overview_brick_list <- list()
+  overview_data <- list()
+  
+  for(i in 1:length(directories)){
+    path = directories[i]
+    files <- list.files(path, full.names = T, pattern = opt$overview)
+    if(length(files) >0){
+      overview_data[[i]] <- str_extract(path, "([^/]+$)")
+      message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
+      image <- files %>% image_read() %>% 
+        image_quantize(colorspace = 'gray') %>% 
+        image_equalize() 
+      temp_file <- tempfile()
+      image_write(image, path = temp_file, format = 'tiff')
+      image <- raster(temp_file) %>%
+        cut(breaks = c(-Inf, 150, Inf)) - 1
+      image <- aggregate(image, fact=4)
+      overview_brick_list[[i]] <- image
+    }
+  }
+  
+  message("Stacking complete. Creating overview x-ray brick...")
+  overview_brick <- do.call(brick, na.omit(overview_brick_list))
+  names(overview_brick) <- unlist(overview_data)
+  
+  message("...complete. Writing overview x-ray brick...")
+  if(!is.na(opt$out)){
+    dir.create(opt$out)
+    if(!is.na(opt$n)){
+      out_brick <- writeRaster(overview_brick, paste0(opt$out, "/", opt$n,"_overview_brick.grd"), overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, paste0(opt$out, "/", opt$n,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    }else{
+      out_brick <- writeRaster(overview_brick, path = opt$out, "overview_brick.grd", overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, path = opt$out, "overview_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    }
+  }else{
+    if(!is.na(opt$n)){
+      out_brick <- writeRaster(overview_brick, paste0(opt$n,"_overview_brick.grd"), overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, paste0(opt$n,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    }else{
+      out_brick <- writeRaster(overview_brick, "overview_brick.grd", overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, "overview_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    }
+  }
+  message("...complete.")
+}
+
+
 #flush everything we don't need from memory
-remove(list = c("x", "xray_brick_list", "xray_data", "empty_raster", "empty_raster_extent",
+remove(list = c("x", "xray_brick_list", "xray_data", "overview_brick_list", "overview_data", "empty_raster", "empty_raster_extent",
                 "i", "j", "k", "path", "positions", "xy_id", 
                 "panorama_merged", "panorama", "empty_xy_id", "files", "directories"))
 
@@ -197,11 +250,11 @@ message("...complete.")
 message("Writing SEM panoramic raster...")
 
 
-if(!is.na(opt$o)){
+if(!is.na(opt$out)){
   if(!is.na(opt$n)){
-    writeRaster(SEM_panorama_merged, paste0(opt$o, "/", opt$n,"_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
+    writeRaster(SEM_panorama_merged, paste0(opt$out, "/", opt$n,"_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
   }else{
-    writeRaster(SEM_panorama_merged, path = opt$o, "SEM_pano.tif", overwrite=TRUE, format = "GTiff")
+    writeRaster(SEM_panorama_merged, path = opt$out, "SEM_pano.tif", overwrite=TRUE, format = "GTiff")
   }
 }else{
   if(!is.na(opt$n)){
@@ -302,8 +355,8 @@ element_plot_with_legend <- plot_grid(
 # generate PDF ------------------------------------------------------------
 
 if(!is.na(opt$n)){
-  if(!is.na(opt$o)){
-    pdf(paste0(opt$o, "/", opt$n, "_element_plot.pdf"),
+  if(!is.na(opt$out)){
+    pdf(paste0(opt$out, "/", opt$n, "_element_plot.pdf"),
         width = 13.33, 
         height = 7.5)
   }else{
@@ -312,8 +365,8 @@ if(!is.na(opt$n)){
         height = 7.5)
   }
 }else{
-  if(!is.na(opt$o)){
-    pdf(paste0(opt$o, "/", "element_plot.pdf"),
+  if(!is.na(opt$out)){
+    pdf(paste0(opt$out, "/", "element_plot.pdf"),
         width = 13.33, 
         height = 7.5)
   }else{

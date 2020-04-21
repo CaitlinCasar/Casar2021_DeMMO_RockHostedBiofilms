@@ -41,8 +41,9 @@ pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwg
 #set working directory
 setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO1/D1T3rep_Dec2019_Ellison/")
 
-#load xray raster brick 
+#load xray raster bricks
 xray_brick <- brick("D1T3rep_Dec2019_brick.grd") 
+overview_brick <- brick("D1T3rep_Dec2019_overview_brick.grd")
 
 #load base SEM image
 SEM_image <- raster("D1T3rep_Dec2019_SEM_pano.tif")
@@ -73,7 +74,7 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
           image_polygon_drop_fill <- image_polygon %>% 
             st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
             fill_holes(threshold = 100) %>%
-            drop_crumbs(threshold = 25) %>% #raster to polygon was creating some tiny polygons 
+            drop_crumbs(threshold = 50) %>% #raster to polygon was creating some tiny polygons 
             st_cast("POLYGON")
           image_polygon_drop_fill
         }else{
@@ -286,36 +287,6 @@ cell_summary <- cells_polygon_stats %>%
 
 # #generate chemistry stats -----------------------------------------------
 
-directories <- list.dirs("/Users/Caitlin/Desktop/dataStitcher/example_dataset", full.names = T , recursive =F)
-directories <- directories[!str_detect(directories, "Unknown|SEM|Os")]
-
-overview_brick_list <- list()
-overview_data <- list()
-
-for(i in 1:length(directories)){
-  path = directories[i]
-  files <- list.files(path, full.names = T, pattern = "overview.*tif")
-  if(length(files) >0){
-    overview_data[[i]] <- str_extract(path, "([^/]+$)")
-    message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
-    image <- files %>% image_read() %>% 
-      image_quantize(colorspace = 'gray') %>% 
-      image_equalize() 
-    temp_file <- tempfile()
-    image_write(image, path = temp_file, format = 'tiff')
-    image <- raster(temp_file) %>%
-      cut(breaks = c(-Inf, 150, Inf)) - 1
-    image <- aggregate(image, fact=4)
-    overview_brick_list[[i]] <- image
-  }
-}
-
-message("Stacking complete. Creating x-ray brick...")
-overview_brick <- do.call(brick, na.omit(overview_brick_list))
-names(overview_brick) <- unlist(overview_data)
-message("...complete.")
-
-
 #bulk chemistry of overview area
 overview_summary <- as.data.frame(overview_brick, xy = T) %>%
   replace(is.na(.), 0) %>%
@@ -398,6 +369,7 @@ element_plotter<-function(coord_frame, brick, SEM_image, colors, density=TRUE){
                              geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
                              scale_color_viridis_c() +
                              geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+                             geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
                              coord_sf(datum = NA)  +
                              theme(axis.title = element_blank(),
                                    axis.text = element_blank(),
@@ -453,7 +425,6 @@ message("...complete.")
 #generate quadrat plot
 message("Generating quadrat plot...")
 
-#****************************make grid cell sizes dynamic**************************
 quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/quad_nx, extent(SEM_image)[4]/quad_ny)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
 
