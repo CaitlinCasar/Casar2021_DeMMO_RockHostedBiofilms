@@ -39,18 +39,21 @@ pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwg
 
 
 #set working directory
-setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO1/D1T3rep_Dec2019_Ellison/")
+setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO3/D3T13exp_Dec2019_Poorman/")
 
 #load xray raster bricks
-xray_brick <- brick("D1T3rep_Dec2019_brick.grd") 
-overview_brick <- brick("D1T3rep_Dec2019_overview_brick.grd")
+xray_brick <- brick("D3T13exp_Dec2019_brick.grd") 
+overview_brick <- brick("D3T13exp_Dec2019_overview_brick.grd")
 
 #load base SEM image
-SEM_image <- raster("D1T3rep_Dec2019_SEM_pano.tif")
+SEM_image <- raster("D3T13exp_Dec2019_SEM_pano.tif")
 
 #cell and biogenic feature image paths
 cells <- "cells.tif"
 biogenic <- "biogenic.tif"
+
+#set scale in number of pixels per micron 
+micron_scale <- 4.2
 
 #function for rasterizing or polygonizing
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
@@ -62,12 +65,13 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
       message("rasterizing...")
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
-      image_raster <- raster(temp_file) %>%
-        cut(breaks = c(-Inf, 150, Inf)) - 1
+      image_raster_noThresh <- raster(temp_file) #%>%
+        #cut(breaks = c(-Inf, 150, Inf)) - 1
+      image_raster <- image_raster_noThresh %>% setValues(if_else(values(image_raster_noThresh) > 150, 0, 1))
       image_raster 
       if(polygonize == TRUE){
         message("polygonizing...")
-        image_polygon <- rasterToPolygons(image_raster, function(x){x == 0}, dissolve = TRUE) %>% 
+        image_polygon <- rasterToPolygons(image_raster, function(x){x == 1}, dissolve = TRUE) %>% 
           st_as_sf() 
         if(drop_and_fill == TRUE){
           message("processing drop and fill...")
@@ -91,9 +95,12 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
   }
 }
 
-#generate cell polygons
+#generate cell and biogenic feature polygons and rasters
 cells_polygon <- image_to_polygon(cells)
 biogenic_polygon <- image_to_polygon(biogenic)
+
+cells_raster <- image_to_polygon(cells, polygonize = F)
+biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
 
 #check plotting if cells are polygons
 rasterVis::gplot(SEM_image) +
@@ -114,7 +121,20 @@ cell_centroids_coords <- cell_centroids %>%
   #mutate(shape = cells_polygon_stats$shape,
          #area = cells_polygon_stats$area) 
 
-
+#check plotting with density contours
+rasterVis::gplot(SEM_image) +
+  geom_tile(aes(fill = value)) +
+  scale_fill_gradient(low = 'black', high = 'white') +
+  coord_fixed() +
+  ggnewscale::new_scale_color() +
+  geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+  scale_color_viridis_c() +
+  geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
+  geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+  coord_sf(datum = NA) +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        legend.position = "none")
 
 
 # spatial stats -----------------------------------------------------------
@@ -129,7 +149,7 @@ window <- owin(xrange = c(st_bbox(cell_centroids)$xmin, st_bbox(cell_centroids)$
                yrange = c(st_bbox(cell_centroids)$ymin, st_bbox(cell_centroids)$ymax))
 
 cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, window) %>%
-  rescale(22.15, "μm")
+  rescale(micron_scale, "μm")
 
 #compute quadrat grid density and intensity -- add dynamic argument for nx/ny 
 quad_nx = 12
@@ -181,66 +201,187 @@ message("...complete.")
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
 plot(ANN ~ eval(1:100), type="b", main=NULL, las=1)
 
+
 ann.p <- mean(nndist(cell_centroids_ppp, k=1))
 
-element_probabilities <- list()
+#element_probabilities <- list()  ##not sure what I was going for here...
 #generate random distribution of cells as null model
 n = 599L
 ann.r <- vector(length=n) # Create an empty object to be used to store simulated ANN values
 for (i in 1:599L){
-  rand.p   <- rpoint(n=cell_centroids_ppp$n, win=window)  # Generate random point locations
+  rand.p   <- rpoint(n=cell_centroids_ppp$n, win=window) 
+  rand.p <- ppp(rand.p$x, rand.p$y, window) %>%
+    rescale(micron_scale, "μm")
+  # Generate random point locations
   ann.r[i] <- mean(nndist(rand.p, k=1))  # Tally the ANN values
 }
 
 N.greater <- sum(ann.r > ann.p)
-element_probabilities[[length(names(xray_brick)) + 1]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
+p <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
 
 
-#test whether element distribution explains cell distribution 
+ggplot()+
+  geom_point(aes(x = rand.p$x, y = rand.p$y), alpha=0.2, stroke=0) +
+  geom_point(aes(x=cell_centroids_ppp$x, y=cell_centroids_ppp$y), color= "#E69F00", stroke=0) +
+  coord_fixed()+
+  ggnewscale::new_scale_color() +
+  geom_density_2d(inherit.aes = F, mapping = aes(cell_centroids_ppp$x, cell_centroids_ppp$y, col = stat(level)/max(stat(level)))) +
+  scale_color_viridis_c() +
+  ggnewscale::new_scale_color() +
+  geom_density_2d(inherit.aes = F, mapping = aes(rand.p$x, rand.p$y, col = stat(level)/max(stat(level))), alpha = 0.2) +
+  scale_color_gradient(high = "black", low = "white") +
+  #scale_color_grey(start = 0.8, end = 0.2)+
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
 
-#this loop takes ~6 minutes per element...
-for(j in 1:length(names(xray_brick))){
-  message(paste0("Calculating covariate stats for ", names(xray_brick)[j], ", element ", j, " of ", length(names(xray_brick)), "..."))
-  n = 599L
-  ann.r <- vector(length=n)
-  xray_im <- as.im(xray_brick[[j]]) %>%
-    rescale(22.15, "μm")
-  for (i in 1:n){
-    rand.p   <- rpoint(n=cell_centroids_ppp$n, f = xray_im) 
-    ann.r[i] <- mean(nndist(rand.p, k=1))
-  }
-  N.greater <- sum(ann.r > ann.p)
-  element_probabilities[[j]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
-}
+#plot ANN random vs. population
+ggplot(as.data.frame(ann.r), aes(x=ann.r)) + 
+  geom_histogram(color="#999999", bins=100, alpha = 0.5) +
+  geom_vline(aes(xintercept=mean(ann.r)),
+             color="#2b2d2f", linetype="dashed", size=1) +
+  geom_vline(aes(xintercept=ann.p),
+             color="#E69F00", linetype="dashed", size=1) +
+  xlim(0, max(ann.r) + 10) +
+  labs(y= "Frequency", x = "ANN Distance (μm)") +
+  annotate("text", x = 0, y =5, size = 3, label = paste0("pseudo p-value: ", "\n", p), hjust = "left")
+
+
+#p = chance that given an infinite number of simulations at least one realization of a point pattern could produce an ANN value more extreme than this sample
+
+
+#element_probabilities[[length(names(xray_brick)) + 1]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
+
+
+# #test whether element distribution explains cell distribution 
+# element_probabilities <- list()
+# #this loop takes ~6 minutes per element...
+# for(j in 1:length(names(xray_brick))){
+#   message(paste0("Calculating covariate stats for ", names(xray_brick)[j], ", element ", j, " of ", length(names(xray_brick)), "..."))
+#   n = 599L
+#   ann.r <- vector(length=n)
+#   xray_im <- as.im(xray_brick[[j]]) %>%
+#     rescale(micron_scale, "μm")
+#   for (i in 1:n){
+#     rand.p   <- rpoint(n=cell_centroids_ppp$n, f = xray_im) 
+#     ann.r[i] <- mean(nndist(rand.p, k=1))
+#   }
+#   N.greater <- sum(ann.r > ann.p)
+#   element_probabilities[[j]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
+# }
 
 #point process model
-#test whether elements explain cell densities
+#test whether elements explain cell distribution
 
-
+#generate list of all possible element combinations
 element_combos = list()
 for(element in 1:length(names(xray_brick))){
   element_combos = append(element_combos, combn(names(xray_brick), element, simplify = F))
 }
 
-
-element_probabilities <- list()
-for(k in 1:length(element_combos)){
-  im_list <- list()
-  for(z in 1:length(element_combos[[k]])){
-    id = element_combos[[k]][z]
-    im_list[[z]] <- assign(paste0(id, "_im"), as.im(xray_brick[[id]]) %>% rescale(22.15, "μm"))
-  }
-  print(parse(text=(paste(im_list, collapse = "+"))))
-  break
-  ppm1 <- eval(parse(text=(paste(ppm(cell_centroids_ppp ~ paste(im_list, collapse = "+"))))))
-  ppm0 <- ppm(cell_centroids_ppp ~ 1)
-  element_probabilities[[k]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+#generate images for each element
+for(k in 1:length(names(xray_brick))){
+    id = names(xray_brick)[k]
+    assign(paste0(id), as.im(xray_brick[[id]]) %>% rescale(micron_scale, "μm"))
 }
 
-point_process_model1 <- ppm(cell_centroids_ppp ~ S_im + Fe_im)
-point_process_model0 <- ppm(cell_centroids_ppp ~ 1)
-anova(point_process_model0, point_process_model1, test="LRT")
+#calculate p-values for each element combination to see if any significantly expain cell distribution
+# element_probabilities <- list()
+# for(i in 1:length(element_combos)){
+#   #print(paste(unlist(element_combos[i]), collapse = "+"))
+#   ppm1 <- eval(parse(text=(paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")"))))
+#   ppm0 <- ppm(cell_centroids_ppp ~ 1)
+#   element_probabilities[[i]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+# }
 
+#this took ~20 minutes to run ~3000 out of 16k combos
+
+element_models <- list()
+for(i in 1:length(element_combos)){
+  element_models[[i]] <- paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")")
+}
+
+element_probabilities <- list()
+element_prob_function <- function(element_model_list){
+  ppm1 <- eval(parse(text=(element_model_list)))
+  ppm0 <- ppm(cell_centroids_ppp ~ 1)
+  element_probabilities[[i]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+}
+
+#calculate probabilities in parallel using max # of detected cores 
+library(parallel)
+library(MASS) #note that this masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
+mclapply(element_models, element_prob_function, mc.cores = detectCores())
+
+#my computer has 4 cores, so this will prob still take an hour to run 
+
+element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
+  mutate(model = element_models,
+         elements = element_combos) 
+
+
+#calculate Spearman correlation over pixels between cells + all elements and between biogenic + all elements
+r1 <- aggregate(xray_brick[[9]], 3, mean)
+r2 <- aggregate(cells_raster, 3, mean)
+rc <- corLocal(r1, r2, method='spearman') #this step takes ~1 minute to run at agg factor of 3
+
+
+element_raster_list <- list()
+for(i in 1:length(names(xray_brick))){
+  element_raster_list[i] <- xray_brick[[i]]
+}
+
+cells_aggregated <- aggregate(cells_raster, 3, mean)
+
+cell_element_corr_fun <- function(element){
+  message(paste0("Calculating Spearman correlation between cells and ", names(element), "..."))
+  element_aggregated <- aggregate(element, 3, mean)
+  corLocal(element_aggregated, cells_aggregated, method='spearman')
+}
+cell_element_corr <- lapply(element_raster_list, cell_element_corr_fun)
+cell_element_corr_stack <- stack(cell_element_corr)
+names(cell_element_corr_stack) <- names(xray_brick)
+
+
+
+#parallelizing does not work on this for some reason
+#cell_element_corr <- mclapply(element_raster_list, cell_element_corr_fun, mc.cores = detectCores())
+
+myTheme <- viridisTheme()
+myTheme$panel.background$col = 'gray' 
+element_theme <- rasterTheme(region = c(zeroCol, 'orange'))
+background_image <- levelplot(SEM_image, par.settings = GrTheme,
+                              xlab=NULL, ylab=NULL, scales=list(draw=FALSE))
+cell_element_corr_plot <- rasterVis::levelplot(xray_brick, par.settings = element_Theme,
+                                               xlab=NULL, ylab=NULL, scales=list(draw=FALSE)) 
+cell_element_corr_plot <- rasterVis::levelplot(cell_element_corr_stack, par.settings = myTheme,
+                     xlab=NULL, ylab=NULL, scales=list(draw=FALSE)) 
+cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/ncol(SEM_image)) #set the aspect ratio for the plots
+#spplot(cell_element_corr_stack) 
+
+background_image + Fe_map + S_map 
+
+test <- mask(xray_brick[[9]], cells_polygon)
+
+
+cor.test(as.matrix(test), as.matrix(cells_raster))
+cor_stack <- stack(test, cells_raster)
+x <- as.matrix(cor_stack)
+cor(x, method="spearman")
+
+cell_element_cor <- list()
+for(i in 1:length(names(xray_brick))){
+  r1 <- as.matrix(xray_brick[[i]])
+  r2 <- as.matrix(cells_raster)
+  cell_element_cor[[i]] <- cor.test(r1, r2)
+}
+
+
+
+
+#rescale raster layer 
+range01 <- function(x){(na.omit(x)-min(na.omit(x)))/(max(na.omit(x))-min(na.omit(x)))}
+test <- xray_brick[[1]] %>% setValues(range01(values(xray_brick[[1]])))
 
 # summarize data ----------------------------------------------------------
 message("Generating reports...")
@@ -265,8 +406,8 @@ ellipsoid_fun <- function(data){
 
 #generate table of cell stats
 cells_polygon_stats <- cells_polygon %>%
-  mutate(area = st_area(geometry)/(22.15^2),
-         perimeter = st_perimeter(geometry)/22.15)
+  mutate(area = st_area(geometry)/(micron_scale^2),
+         perimeter = st_perimeter(geometry)/micron_scale)
 cells_polygon_stats$roundness <- sapply(cells_polygon$geometry, ellipsoid_fun)
 cells_polygon_stats <- cells_polygon_stats %>%
   mutate(shape = case_when(roundness < 1.12 ~ "cocci",
@@ -302,7 +443,7 @@ transect_summary <- as.data.frame(xray_brick, xy = T) %>%
   replace(is.na(.), 0) %>%
   summarise_all(funs(sum)) %>%
   gather(element, `wt%`, -x, -y) %>%
-  select(-x, -y) %>% 
+  dplyr::select(-x, -y) %>% 
   mutate(`wt%` = `wt%`/sum(`wt%`)*100,
          type = "transect") %>%
   spread(type, `wt%`)

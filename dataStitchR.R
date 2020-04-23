@@ -106,8 +106,9 @@ for(j in 1:length(directories)){
         image_equalize()
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
-      image <- raster(temp_file) %>%
-        cut(breaks = c(-Inf, 150, Inf)) - 1
+      image_noThresh <- raster(temp_file) #%>%
+      image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 150, 1, 0))
+        #cut(breaks = c(-Inf, 150, Inf)) - 1
       image <- aggregate(image, fact=4)
       image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
       image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
