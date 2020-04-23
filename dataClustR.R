@@ -273,9 +273,12 @@ ggplot(as.data.frame(ann.r), aes(x=ann.r)) +
 #point process model
 #test whether elements explain cell distribution
 
+#add a limit to number of model variables based on rel abundance of elements
+n_variables <- nrow(element_summary %>% filter(transect >= 10)) #set threshold to 10%
+
 #generate list of all possible element combinations
 element_combos = list()
-for(element in 1:length(names(xray_brick))){
+for(element in 1:n_variables){
   element_combos = append(element_combos, combn(names(xray_brick), element, simplify = F))
 }
 
@@ -301,17 +304,17 @@ for(i in 1:length(element_combos)){
   element_models[[i]] <- paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")")
 }
 
-element_probabilities <- list()
 element_prob_function <- function(element_model_list){
   ppm1 <- eval(parse(text=(element_model_list)))
   ppm0 <- ppm(cell_centroids_ppp ~ 1)
-  element_probabilities[[i]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+  unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
 }
 
 #calculate probabilities in parallel using max # of detected cores 
 library(parallel)
 library(MASS) #note that this masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
-mclapply(element_models, element_prob_function, mc.cores = detectCores())
+element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = detectCores())
+
 
 #my computer has 4 cores, so this will prob still take an hour to run 
 
@@ -319,62 +322,79 @@ element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
   mutate(model = element_models,
          elements = element_combos) 
 
+sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()))
+
 
 #calculate Spearman correlation over pixels between cells + all elements and between biogenic + all elements
-r1 <- aggregate(xray_brick[[9]], 3, mean)
+r1 <- aggregate(xray_brick[[16]], 3, mean)
 r2 <- aggregate(cells_raster, 3, mean)
 rc <- corLocal(r1, r2, method='spearman') #this step takes ~1 minute to run at agg factor of 3
 
 
 element_raster_list <- list()
-for(i in 1:length(names(xray_brick))){
-  element_raster_list[i] <- xray_brick[[i]]
+for(i in 1:length(sig_elements)){
+  element_raster_list[i] <- xray_brick[[sig_elements[i]]]
 }
+
 
 cells_aggregated <- aggregate(cells_raster, 3, mean)
 
 cell_element_corr_fun <- function(element){
-  message(paste0("Calculating Spearman correlation between cells and ", names(element), "..."))
+  #message(paste0("Calculating Spearman correlation between cells and ", names(element), "..."))
   element_aggregated <- aggregate(element, 3, mean)
   corLocal(element_aggregated, cells_aggregated, method='spearman')
 }
 cell_element_corr <- lapply(element_raster_list, cell_element_corr_fun)
 cell_element_corr_stack <- stack(cell_element_corr)
-names(cell_element_corr_stack) <- names(xray_brick)
+names(cell_element_corr_stack) <- element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()
 
 
 
 #parallelizing does not work on this for some reason
 #cell_element_corr <- mclapply(element_raster_list, cell_element_corr_fun, mc.cores = detectCores())
 
-myTheme <- viridisTheme()
-myTheme$panel.background$col = 'gray' 
+myTheme <- rasterTheme(region = c(zeroCol, viridis::viridis(30)))
+#myTheme$panel.background$col = 'gray' 
+zeroCol <- NA
 element_theme <- rasterTheme(region = c(zeroCol, 'orange'))
-background_image <- levelplot(SEM_image, par.settings = GrTheme,
-                              xlab=NULL, ylab=NULL, scales=list(draw=FALSE))
-cell_element_corr_plot <- rasterVis::levelplot(xray_brick, par.settings = element_Theme,
+
+# Customize the colorkey
+my.at <- seq(-1, 1, length.out=length(myTheme$regions$col)-1)
+my.ckey <- list(at=my.at, col=myTheme$regions$col)
+
+
+background_stack <- list()
+for(i in 1:length(sig_elements)){
+  background_stack[[i]] <- SEM_image
+}
+background_stack <- stack(background_stack)
+names(background_stack) <- names(cell_element_corr_stack)
+background_image <- levelplot(background_stack, par.settings = GrTheme,
+                              xlab=NULL, ylab=NULL, scales=list(draw=FALSE), alpha.regions = 0.5, colorkey=my.ckey)
+background_image <- update(background_image, aspect=nrow(SEM_image)/ncol(SEM_image)) 
+element_background_plot <- rasterVis::levelplot(reclassify(xray_brick[[sig_elements]], cbind(0, NA)), par.settings = element_theme,
                                                xlab=NULL, ylab=NULL, scales=list(draw=FALSE)) 
+element_background_plot <- update(element_background_plot, aspect=nrow(SEM_image)/ncol(SEM_image)) 
 cell_element_corr_plot <- rasterVis::levelplot(cell_element_corr_stack, par.settings = myTheme,
                      xlab=NULL, ylab=NULL, scales=list(draw=FALSE)) 
 cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/ncol(SEM_image)) #set the aspect ratio for the plots
-#spplot(cell_element_corr_stack) 
 
-background_image + Fe_map + S_map 
+background_image +  element_background_plot + cell_element_corr_plot
 
-test <- mask(xray_brick[[9]], cells_polygon)
-
-
-cor.test(as.matrix(test), as.matrix(cells_raster))
-cor_stack <- stack(test, cells_raster)
-x <- as.matrix(cor_stack)
-cor(x, method="spearman")
-
-cell_element_cor <- list()
-for(i in 1:length(names(xray_brick))){
-  r1 <- as.matrix(xray_brick[[i]])
-  r2 <- as.matrix(cells_raster)
-  cell_element_cor[[i]] <- cor.test(r1, r2)
-}
+# test <- mask(xray_brick[[16]], cells_polygon)
+# 
+# 
+# cor.test(as.matrix(test), as.matrix(cells_raster))
+# cor_stack <- stack(xray_brick[[16]], cells_raster)
+# x <- as.matrix(cor_stack)
+# cor(x, method="spearman")
+# 
+# cell_element_cor <- list()
+# for(i in 1:length(names(xray_brick))){
+#   r1 <- as.matrix(xray_brick[[i]])
+#   r2 <- as.matrix(cells_raster)
+#   cell_element_cor[[i]] <- cor.test(r1, r2)
+# }
 
 
 
@@ -433,7 +453,7 @@ overview_summary <- as.data.frame(overview_brick, xy = T) %>%
   replace(is.na(.), 0) %>%
   summarise_all(funs(sum)) %>%
   gather(element, `wt%`, -x, -y) %>%
-  select(-x, -y) %>% 
+  dplyr::select(-x, -y) %>% 
   mutate(`wt%` = `wt%`/sum(`wt%`)*100,
          type = "overview") %>%
   spread(type, `wt%`)
