@@ -60,6 +60,36 @@ biogenic <- "biogenic.tif"
 #set scale in number of pixels per micron 
 micron_scale <- 4.2
 
+#plotting function
+plot_PDF <- function(data_to_plot, plot_name){
+  if(!is.na(opt$n)){
+    if(!is.na(opt$out)){
+      pdf(paste0(opt$out, "/", opt$n, "_", plot_name,".pdf"),
+          width = 13.33, 
+          height = 7.5)
+    }else{
+      pdf(paste0(opt$n, "_", plot_name,".pdf"),
+          width = 13.33, 
+          height = 7.5)
+    }
+  }else{
+    if(!is.na(opt$out)){
+      pdf(paste0(opt$out, "/", plot_name,".pdf"),
+          width = 13.33, 
+          height = 7.5)
+    }else{
+      pdf(paste0(plot_name,".pdf"),
+          width = 13.33, 
+          height = 7.5) 
+    }
+  }
+  
+  
+  print(data_to_plot)
+  
+  dev.off()
+}
+
 
 # rasterize/polygonize cells and biogenic features ------------------------
 
@@ -153,28 +183,49 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
 #   theme(axis.title = element_blank(),
 #         axis.text = element_blank(),
 #         legend.position = "none")
-# kest plot --------------------------------------------------
+# plot spatial randomness ppm models --------------------------------------------------
 
 #calculate spatial randomness 
 #do we expect to see clustering?
 #Where K falls under the theoretical Kpois line the points are more clustered at distance r, and vis versa
 
-cell_kest <- Kest(cell_centroids_ppp)
+cell_fest <- Fest(cell_centroids_ppp) %>%
+  dplyr::select(-hazard, -theohaz) %>%
+  gather(type, value, theo:km) %>%
+  mutate(test = "F function")
 
-kest_plot <- cell_kest %>%
+cell_kest <- Kest(cell_centroids_ppp) %>%
   gather(type, value, theo:iso) %>%
+  mutate(test = "K function")
+
+cell_jest <- Jest(cell_centroids_ppp) %>%
+  dplyr::select(-hazard) %>%
+  gather(type, value, theo:km) %>%
+  mutate(test = "J function")
+
+cell_gest <- Gest(cell_centroids_ppp) %>%
+  dplyr::select(-hazard, -theohaz) %>%
+  gather(type, value, theo:km) %>%
+  mutate(test = "G function")
+
+ppm_all_plot <- cell_fest %>%
+  bind_rows(cell_kest) %>%
+  bind_rows(cell_jest) %>%
+  bind_rows(cell_gest) %>%
   ggplot(aes(x = r)) +
-  geom_line(aes(y = value, color = type))
+  geom_line(aes(y = value, color = type)) +
+  xlab(expression("Distance ("~mu~"m)")) +
+  facet_wrap(~test, scales = "free")
+
 
 # generate PDF 
 message("Generating Kest plot...")
 
-sample_id <- "D1T1exp_Dec2019_Poorman"
-pdf(paste0(sample_id, "_Kest_plot.pdf"),
+pdf(paste0(sample_id, "_ppm_models.pdf"),
     width = 13.33, 
     height = 7.5)
 
-print(element_plot_with_legend)
+print(ppm_all_plot)
 
 dev.off()
 
