@@ -381,24 +381,41 @@ cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/
 
 background_image +  element_background_plot + cell_element_corr_plot
 
-# test <- mask(xray_brick[[16]], cells_polygon)
-# 
-# 
-# cor.test(as.matrix(test), as.matrix(cells_raster))
-# cor_stack <- stack(xray_brick[[16]], cells_raster)
-# x <- as.matrix(cor_stack)
-# cor(x, method="spearman")
-# 
-# cell_element_cor <- list()
-# for(i in 1:length(names(xray_brick))){
-#   r1 <- as.matrix(xray_brick[[i]])
-#   r2 <- as.matrix(cells_raster)
-#   cell_element_cor[[i]] <- cor.test(r1, r2)
-# }
+test <- mask(xray_brick[[16]], cells_polygon)
 
-# #rescale raster layer 
-# range01 <- function(x){(na.omit(x)-min(na.omit(x)))/(max(na.omit(x))-min(na.omit(x)))}
-# test <- xray_brick[[1]] %>% setValues(range01(values(xray_brick[[1]])))
+total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
+cell_mat <- as.matrix(cells_raster)
+biogenic_mat <- as.matrix(biogenic_raster)
+for(i in 1:length(names(xray_brick))){
+  element_mat <- as.matrix(xray_brick[[i]])
+  result <- cor.test(element_mat, cell_mat)
+  result2 <- cor.test(element_mat, biogenic_mat)
+  total_cor <- total_cor %>% add_row(element = names(xray_brick[[i]]), 
+                                     cell_cor = result$estimate, cell_pval = result$p.value,
+                                     biogenic_cor = result2$estimate, biogenic_pval = result2$p.value)
+  
+}
+
+total_cor %>%
+  dplyr::select(-cell_pval, -biogenic_pval) %>%
+  gather(type, cor, cell_cor:biogenic_cor) %>%
+  ggplot() +
+  geom_line(aes(reorder(element, cor), cor, color = type, group=type))
+
+
+
+cor.test(as.matrix(xray_brick[[1]]), as.matrix(cells_raster))
+cor_stack <- stack(xray_brick[[16]], cells_raster)
+x <- as.matrix(cor_stack)
+cor(x, method="spearman")
+
+cell_element_cor <- list()
+for(i in 1:length(names(xray_brick))){
+  r1 <- as.matrix(xray_brick[[i]])
+  r2 <- as.matrix(cells_raster)
+  cell_element_cor[[i]] <- cor.test(r1, r2)
+}
+
 
 # summarize data ----------------------------------------------------------
 message("Generating reports...")
