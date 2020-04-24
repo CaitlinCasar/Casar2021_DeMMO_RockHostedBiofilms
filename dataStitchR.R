@@ -61,7 +61,7 @@ option_list = list(
   make_option(c("-q", "--quiet"), action="store_false", dest="verbose",
               help="Do not print anything to the console."),
   make_option(c("-p", "--pdf"), action="store", default=FALSE,
-              help="Generate PDF of x-ray brick colored by element superimposed on the SEM image, default is TRUE [default %default].")  
+              help="Generate PDF of x-ray brick colored by element superimposed on the SEM image, default is FALSE [default %default].")  
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
@@ -102,13 +102,11 @@ for(j in 1:length(directories)){
     for(i in 1:length(files)){
       message(paste0("Processing image ", i, " of ", length(files), "..."))
       image <- files[i] %>% image_read() %>%
-        image_quantize(colorspace = 'gray') %>%
-        image_equalize()
+        image_quantize(colorspace = 'gray') 
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
-      image_noThresh <- raster(temp_file) #%>%
-      image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 150, 1, 0))
-        #cut(breaks = c(-Inf, 150, Inf)) - 1
+      image_noThresh <- raster(temp_file)
+      image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 0, 1, 0))
       image <- aggregate(image, fact=4)
       image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
       image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)

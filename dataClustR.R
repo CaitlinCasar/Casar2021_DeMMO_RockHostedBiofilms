@@ -2,40 +2,40 @@ suppressPackageStartupMessages(require(optparse))
 
 option_list = list(
   make_option(c("-f", "--file"), action="store", default=getwd(), type='character',
-              help="Name of brick file."),
+              help="Name of xray brick file from dataStitchR output."),
   make_option(c("-o", "--out"), action="store", default=NA, type='character',
-              help="Output file directory. This is where your x-ray raster brick and output figures will be saved."),
+              help="Output file directory. This is where your reports and plots will be saved."),
   make_option(c("-n", "--name"), action="store", default=NA, type='character',
               help="Optional name for output files."),
-  make_option(c("-b", "--base-images"), action="store", default=NA, type='character',
-              help="SEM image file directory."),
-  make_option(c("-c", "--coords"), action="store", default=NA, type='character',
-              help="Tab-delimited file of xy coordinates for each image. A third column should denote stitching positions that correspond to the file names for each image."),
-  make_option(c("-u", "--use-positions"), action="store", default="-?(?<![Kα1||Kα1_2])\\d+", type='character',
-              help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
-  make_option(c("-z", "--z-format"), action="store", default="*", type='character',
-              help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
-  make_option(c("-m", "--make"), action="store", default="*", type='character',
-              help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
-  make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
-              help="Optional regex pattern of x-ray file directories to exclude from stitiching, i.e. the element your sample was coated with."),
-  make_option(c("-d", "--drop"), action="store", default=NA, type='character',
-              help="Optional regex pattern of files to exclude from x-ray data stitching."),
-  make_option(c("-y", "--y-exclude"), action="store", default=NA, type='character',
-              help="Optional regex pattern of files to exclude from SEM image stitiching. You do not need to specify this unless you are generating a PDF output."),
+  # make_option(c("-b", "--base-images"), action="store", default=NA, type='character',
+  #             help="SEM image file directory."),
+  # make_option(c("-c", "--coords"), action="store", default=NA, type='character',
+  #             help="Tab-delimited file of xy coordinates for each image. A third column should denote stitching positions that correspond to the file names for each image."),
+  # make_option(c("-u", "--use-positions"), action="store", default="-?(?<![Kα1||Kα1_2])\\d+", type='character',
+  #             help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
+  # make_option(c("-z", "--z-format"), action="store", default="*", type='character',
+  #             help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
+  # make_option(c("-m", "--make"), action="store", default="*", type='character',
+  #             help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
+  # make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
+  #             help="Optional regex pattern of x-ray file directories to exclude from stitiching, i.e. the element your sample was coated with."),
+  # make_option(c("-d", "--drop"), action="store", default=NA, type='character',
+  #             help="Optional regex pattern of files to exclude from x-ray data stitching."),
+  # make_option(c("-y", "--y-exclude"), action="store", default=NA, type='character',
+  #             help="Optional regex pattern of files to exclude from SEM image stitiching. You do not need to specify this unless you are generating a PDF output."),
   make_option(c("-v", "--verbose"), action="store_true", default=TRUE,
               help="Print updates to console [default %default]."),
   make_option(c("-q", "--quiet"), action="store_false", dest="verbose",
               help="Do not print anything to the console."),
   make_option(c("-p", "--pdf"), action="store", default=FALSE,
-              help="Generate PDF of x-ray brick colored by element superimposed on the SEM image, default is TRUE [default %default].")  
+              help="Generate summary plots, default is FALSE [default %default].")  
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
 
 
 #load dependencies
-pacman::p_load(spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager,ggnewscale,  magick, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
+pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager, ggnewscale, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
 
 
 #set working directory
@@ -311,10 +311,10 @@ element_prob_function <- function(element_model_list){
 }
 
 #calculate probabilities in parallel using max # of detected cores 
-library(parallel)
-library(MASS) #note that this masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
+#note that MASS masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
 element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = detectCores())
 
+element_probabilities <- lapply(element_models, element_prob_function)
 
 #my computer has 4 cores, so this will prob still take an hour to run 
 
@@ -326,9 +326,9 @@ sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == 
 
 
 #calculate Spearman correlation over pixels between cells + all elements and between biogenic + all elements
-r1 <- aggregate(xray_brick[[16]], 3, mean)
-r2 <- aggregate(cells_raster, 3, mean)
-rc <- corLocal(r1, r2, method='spearman') #this step takes ~1 minute to run at agg factor of 3
+# r1 <- aggregate(xray_brick[[16]], 3, mean)
+# r2 <- aggregate(cells_raster, 3, mean)
+# rc <- corLocal(r1, r2, method='spearman') #this step takes ~1 minute to run at agg factor of 3
 
 
 element_raster_list <- list()
@@ -396,12 +396,9 @@ background_image +  element_background_plot + cell_element_corr_plot
 #   cell_element_cor[[i]] <- cor.test(r1, r2)
 # }
 
-
-
-
-#rescale raster layer 
-range01 <- function(x){(na.omit(x)-min(na.omit(x)))/(max(na.omit(x))-min(na.omit(x)))}
-test <- xray_brick[[1]] %>% setValues(range01(values(xray_brick[[1]])))
+# #rescale raster layer 
+# range01 <- function(x){(na.omit(x)-min(na.omit(x)))/(max(na.omit(x))-min(na.omit(x)))}
+# test <- xray_brick[[1]] %>% setValues(range01(values(xray_brick[[1]])))
 
 # summarize data ----------------------------------------------------------
 message("Generating reports...")
