@@ -5,26 +5,26 @@ suppressPackageStartupMessages(require(optparse))
 option_list = list(
   make_option(c("-f", "--file"), action="store", default=getwd(), type='character',
               help="Name of xray brick file from dataStitchR output."),
+  make_option(c("-t", "--overview"), action="store", default=NA, type='character',
+              help="Optional brick of overview area from dataStitchR output"),
   make_option(c("-o", "--out"), action="store", default=NA, type='character',
               help="Output file directory. This is where your reports and plots will be saved."),
   make_option(c("-n", "--name"), action="store", default=NA, type='character',
               help="Optional name for output files."),
   # make_option(c("-b", "--base-images"), action="store", default=NA, type='character',
   #             help="SEM image file directory."),
-  # make_option(c("-c", "--coords"), action="store", default=NA, type='character',
-  #             help="Tab-delimited file of xy coordinates for each image. A third column should denote stitching positions that correspond to the file names for each image."),
-  # make_option(c("-u", "--use-positions"), action="store", default="-?(?<![Kα1||Kα1_2])\\d+", type='character',
-  #             help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
+  make_option(c("-c", "--cores"), action="store", default=1, type='character',
+              help="Number of cores to use for parallel processing, default is 1."),
+  make_option(c("-u", "--use-scale"), action="store", default=1, type='character',
+              help="Optional scale to use for converting pixels to microns."),
   # make_option(c("-z", "--z-format"), action="store", default="*", type='character',
   #             help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
-  # make_option(c("-m", "--make"), action="store", default="*", type='character',
-  #             help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
-  # make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
-  #             help="Optional regex pattern of x-ray file directories to exclude from stitiching, i.e. the element your sample was coated with."),
-  # make_option(c("-d", "--drop"), action="store", default=NA, type='character',
-  #             help="Optional regex pattern of files to exclude from x-ray data stitching."),
-  # make_option(c("-y", "--y-exclude"), action="store", default=NA, type='character',
-  #             help="Optional regex pattern of files to exclude from SEM image stitiching. You do not need to specify this unless you are generating a PDF output."),
+  make_option(c("-m", "--model_vars"), action="store", default=1, type='character',
+              help="Required number of variables to include in point process models where variables are elements."),
+  make_option(c("-d", "--d_cols"), action="store", default=12, type='character',
+              help="Optional number of columns for quadrat grid."),
+  make_option(c("-y", "--y_rows"), action="store", default=3, type='character',
+              help="Optional number of rows for quadrat grid."),
   make_option(c("-v", "--verbose"), action="store_true", default=TRUE,
               help="Print updates to console [default %default]."),
   make_option(c("-q", "--quiet"), action="store_false", dest="verbose",
@@ -42,13 +42,11 @@ pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, 
 
 # import the data ---------------------------------------------------------
 
-
-#set working directory
-setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO3/D3T13exp_Dec2019_Poorman/")
-
 #load xray raster bricks
-xray_brick <- brick("D3T13exp_Dec2019_brick.grd") 
-overview_brick <- brick("D3T13exp_Dec2019_overview_brick.grd")
+xray_brick <- brick(opt$f) 
+if(!is.na(opt$overview)){
+  overview_brick <- brick(opt$overview)
+}
 
 #load base SEM image
 SEM_image <- raster("D3T13exp_Dec2019_SEM_pano.tif")
@@ -58,7 +56,13 @@ cells <- "cells.tif"
 biogenic <- "biogenic.tif"
 
 #set scale in number of pixels per micron 
-micron_scale <- 4.2
+micron_scale <- opt$u
+#micron_scale <- 4.2
+
+#create output directory
+if(!is.na(opt$out)){
+  dir.create(opt$out)
+}
 
 #plotting function
 plot_PDF <- function(data_to_plot, plot_name){
@@ -88,6 +92,23 @@ plot_PDF <- function(data_to_plot, plot_name){
   print(data_to_plot)
   
   dev.off()
+}
+
+#data writing function
+write_data <- function(data, file_name){
+  if(!is.na(opt$n)){
+    if(!is.na(opt$out)){
+      write_csv(data, paste0(opt$out, "/", opt$n, "_", file_name,".csv"))
+    }else{
+      write_csv(data, paste0(opt$n, "_", file_name,".csv"))
+    }
+  }else{
+    if(!is.na(opt$out)){
+      write_csv(data, paste0(opt$out, "/", file_name,".csv"))
+    }else{
+      write_csv(data, paste0(file_name,".csv"))
+    }
+  }
 }
 
 
@@ -185,7 +206,6 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
 #         legend.position = "none")
 # plot spatial randomness ppm models --------------------------------------------------
 
-#calculate spatial randomness 
 #do we expect to see clustering?
 #Where K falls under the theoretical Kpois line the points are more clustered at distance r, and vis versa
 
@@ -221,13 +241,7 @@ ppm_all_plot <- cell_fest %>%
 # generate PDF 
 message("Generating Kest plot...")
 
-pdf(paste0(sample_id, "_ppm_models.pdf"),
-    width = 13.33, 
-    height = 7.5)
-
-print(ppm_all_plot)
-
-dev.off()
+plot_PDF(ppm_all_plot, "ppm_models")
 
 message("...complete.")
 
@@ -235,12 +249,13 @@ message("...complete.")
 # Calculate ANN -----------------------------------------------------------
 
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
-plot(ANN ~ eval(1:100), type="b", main=NULL, las=1)
 
-ggplot() +
+ANN_plot <- ggplot() +
   geom_point(aes(x=1:100, y=ANN)) +
   xlab ("Nth nearest neighbor") +
-  ylab("Average distance (μm)")
+  ylab(expression("Average distance ("~mu~"m)"))
+
+plot_PDF(ANN_plot, "ANN")
 
 ann.p <- mean(nndist(cell_centroids_ppp, k=1))
 
@@ -258,8 +273,8 @@ for (i in 1:599L){
 N.greater <- sum(ann.r > ann.p)
 p <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
 
-
-ggplot()+
+#plot random vs true points with density contours
+ANN_dens_plot <- ggplot()+
   geom_point(aes(x = rand.p$x, y = rand.p$y), alpha=0.2, stroke=0) +
   geom_point(aes(x=cell_centroids_ppp$x, y=cell_centroids_ppp$y), color= "#E69F00", stroke=0) +
   coord_fixed()+
@@ -274,8 +289,9 @@ ggplot()+
         axis.text = element_blank(),
         axis.ticks = element_blank())
 
+plot_PDF(ANN_dens_plot, "ANN_density")
+
 #plot ANN random vs. population
-sample_id <- "D3T13exp_Dec2019_Poorman"
 ANN_hist <- ggplot(as.data.frame(ann.r), aes(x=ann.r)) + 
   geom_histogram(color="#999999", bins=100, alpha = 0.5) +
   geom_vline(aes(xintercept=mean(ann.r)),
@@ -286,30 +302,19 @@ ANN_hist <- ggplot(as.data.frame(ann.r), aes(x=ann.r)) +
   labs(y= "Frequency", x = expression("ANN Distance ("~mu~"m)")) +
   annotate("text", x = 0, y =5, size = 3, label = paste0("pseudo p-value: ", "\n", p), hjust = "left")
 
-pdf(paste0(sample_id, "_ANN_hist.pdf"),
-    width = 13.33, 
-    height = 7.5)
-
-print(ANN_hist)
-
-dev.off()
-
-message("...complete.")
+plot_PDF(ANN_hist, "ANN_hist")
 
 
 #p = chance that given an infinite number of simulations at least one realization of a point pattern could produce an ANN value more extreme than this sample
 
 # element point process models --------------------------------------------
-
-
 #test whether elements explain cell distribution
 
 #add a limit to number of model variables based on rel abundance of elements
-n_variables <- nrow(element_summary %>% filter(transect >= 10)) #set threshold to 10%
 
 #generate list of all possible element combinations
 element_combos = list()
-for(element in 1:n_variables){
+for(element in 1:opt$model_vars){
   element_combos = append(element_combos, combn(names(xray_brick), element, simplify = F))
 }
 
@@ -334,7 +339,7 @@ element_prob_function <- function(element_model_list){
 
 #calculate probabilities in parallel using max # of detected cores 
 #note that MASS masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
-element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = detectCores())
+element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = opt$cores)
 
 #element_probabilities <- lapply(element_models, element_prob_function)
 
@@ -343,7 +348,7 @@ element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
          elements = element_combos) 
 
 #write data to csv
-element_probs %>% dplyr::select(-elements) %>% write_csv("cell_distribution_models.csv")
+element_probs %>% dplyr::select(-elements) %>% write_data("cell_distribution_models")
 
 # plot Spearman local correlation over cells + elements from most --------
 sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()))
@@ -390,7 +395,8 @@ cell_element_corr_plot <- rasterVis::levelplot(cell_element_corr_stack, par.sett
 cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/ncol(SEM_image)) #set the aspect ratio for the plots
 
 #generate PDF
-background_image +  element_background_plot + cell_element_corr_plot
+local_corr_plot <- background_image +  element_background_plot + cell_element_corr_plot
+plot_PDF(local_corr_plot, "local_correlation")
 
 # calculate total correlation between cells/biogenic features and --------
 
@@ -408,10 +414,10 @@ for(i in 1:length(names(xray_brick))){
 }
 
 #write data to csv
-write_csv(total_cor, "total_corrlation.csv")
+write_data(total_cor, "total_correlation")
 
 #generate PDF
-total_cor %>%
+total_cor <- total_cor %>%
   dplyr::select(-cell_pval, -biogenic_pval) %>%
   gather(type, cor, cell_cor:biogenic_cor) %>%
   ggplot() +
@@ -420,9 +426,7 @@ total_cor %>%
   xlab("Element") +
   ylab("Correlation")
 
-
-# summarize data ----------------------------------------------------------
-message("Generating summary reports...")
+plot_PDF(total_cor, "total_correlation")
 
 
 # generate cell stats -----------------------------------------------------
@@ -474,20 +478,9 @@ cell_summary <- cells_polygon_stats %>%
             data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
 
 #write data to csv
-write_csv(cell_summary, "cell_summary.csv")
+write_data(cell_summary, "cell_summary")
 
 # #generate chemistry stats -----------------------------------------------
-
-#bulk chemistry of overview area
-overview_summary <- as.data.frame(overview_brick, xy = T) %>%
-  replace(is.na(.), 0) %>%
-  summarise_all(funs(sum)) %>%
-  gather(element, `wt%`, -x, -y) %>%
-  dplyr::select(-x, -y) %>% 
-  mutate(`wt%` = `wt%`/sum(`wt%`)*100,
-         type = "overview") %>%
-  spread(type, `wt%`)
-
 #bulk chemistry of transect 
 transect_summary <- as.data.frame(xray_brick, xy = T) %>%
   replace(is.na(.), 0) %>%
@@ -498,11 +491,24 @@ transect_summary <- as.data.frame(xray_brick, xy = T) %>%
          type = "transect") %>%
   spread(type, `wt%`)
 
-element_summary <- overview_summary %>%
-  full_join(transect_summary)
+#bulk chemistry of overview area
+if(!is.na(opt$overview)){
+  overview_summary <- as.data.frame(overview_brick, xy = T) %>%
+    replace(is.na(.), 0) %>%
+    summarise_all(funs(sum)) %>%
+    gather(element, `wt%`, -x, -y) %>%
+    dplyr::select(-x, -y) %>% 
+    mutate(`wt%` = `wt%`/sum(`wt%`)*100,
+           type = "overview") %>%
+    spread(type, `wt%`)
+  element_summary <- overview_summary %>%
+    full_join(transect_summary)
+}else{
+  element_summary <- transect_summary
+}
 
 #write data to csv
-write_csv(element_summary, "element_summary.csv")
+write_data(element_summary, "element_summary")
 # plot element data with density contours -----------------------------------------------------------
 
 #generate element map with cells 
@@ -604,14 +610,8 @@ element_plot_with_legend <- plot_grid(
 
 
 #generatePDF
-sample_id <- "D1T1exp_Dec2019_Poorman"
-pdf(paste0(sample_id, "_density_plot.pdf"),
-    width = 13.33, 
-    height = 7.5)
+plot_PDF(element_plot_with_legend, "density_contour_with_elements")
 
-print(element_plot_with_legend)
-
-dev.off()
 
 message("...complete.")
 
@@ -620,8 +620,8 @@ message("...complete.")
 message("Generating quadrat plot...")
 
 #compute quadrat grid density and intensity  
-quad_nx = 12
-quad_ny = 3
+quad_nx = opt$d
+quad_ny = opt$y
 
 cells_quadrat <- quadratcount(cell_centroids_ppp, nx = quad_nx, ny = quad_ny)
 cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
@@ -649,7 +649,6 @@ quadrat_plot <- rasterVis::gplot(SEM_image) +
   coord_fixed() +
   ggnewscale::new_scale_fill() +
   geom_polygon(data = quadrat_grid_poly, aes(X,Y, fill = intensity, group=grid_id), alpha = 0.5, lwd = 0.3, color = "black") +
-  #geom_sf(data = quadrat_grid, inherit.aes = F, aes(fill = intensity), alpha = 0.5, lwd = 0.3, color = "black") + # this was causing issues with aspect ratio
   scale_fill_viridis_c() +
   geom_sf(data = cells_polygon, inherit.aes = F, fill = "red", lwd = 0) + 
   geom_text(data = grid_lab, aes(x = X, y = Y, label = Freq), size = 3, color = "black", fontface = "bold") +
@@ -658,13 +657,6 @@ quadrat_plot <- rasterVis::gplot(SEM_image) +
   labs(y = "") 
 
 #generate PDF
-sample_id <- "D1T1exp_Dec2019_Poorman"
-pdf(paste0(sample_id, "_quadrat_plot.pdf"),
-    width = 13.33, 
-    height = 7.5)
-
-print(quadrat_plot)
-
-dev.off()
+plot_PDF(quadrat_plot, "quadrat_plot")
 
 message("...complete.")
