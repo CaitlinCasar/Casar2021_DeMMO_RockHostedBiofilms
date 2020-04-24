@@ -400,21 +400,10 @@ total_cor %>%
   dplyr::select(-cell_pval, -biogenic_pval) %>%
   gather(type, cor, cell_cor:biogenic_cor) %>%
   ggplot() +
-  geom_line(aes(reorder(element, cor), cor, color = type, group=type))
-
-
-
-cor.test(as.matrix(xray_brick[[1]]), as.matrix(cells_raster))
-cor_stack <- stack(xray_brick[[16]], cells_raster)
-x <- as.matrix(cor_stack)
-cor(x, method="spearman")
-
-cell_element_cor <- list()
-for(i in 1:length(names(xray_brick))){
-  r1 <- as.matrix(xray_brick[[i]])
-  r2 <- as.matrix(cells_raster)
-  cell_element_cor[[i]] <- cor.test(r1, r2)
-}
+  geom_line(aes(reorder(element, cor), cor, color = type, group=type)) +
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  xlab("Element") +
+  ylab("Correlation")
 
 
 # summarize data ----------------------------------------------------------
@@ -428,7 +417,7 @@ ellipsoid_fun <- function(data){
   polygon_coords <- data %>%
     st_coordinates() %>%
     as.data.frame() %>%
-    select(-L1, -L2) %>%
+    dplyr::select(-L1, -L2) %>%
     as.matrix() 
   ellipsoid <- predict(ellipsoidhull(polygon_coords))
   me <- colMeans((ellipsoid))   
@@ -448,17 +437,27 @@ cells_polygon_stats <- cells_polygon_stats %>%
                            roundness >= 1.12 & roundness < 5 ~"rod",
                            TRUE ~ "filament"))
 
+biogenic_polygon_stats <- biogenic_polygon %>%
+  mutate(area = st_area(geometry)/(micron_scale^2))
+  
+
+transect_area <- ((extent(SEM_image)[2])/micron_scale)*((extent(SEM_image)[4])/micron_scale)
+
 cell_summary <- cells_polygon_stats %>% 
   as.data.frame %>%
   group_by(shape) %>% 
   summarise(value = n()) %>%
   rename(observation = shape) %>%
-  bind_rows(data.frame(observation = "mean cell area (μm)", value = mean(cells_polygon_stats$area)),
+  bind_rows(data.frame(observation = "mean cell area (μm^2)", value = mean(cells_polygon_stats$area)),
+            data.frame(observation = "total cell area (μm^2)", value = sum(cells_polygon_stats$area)),
+            data.frame(observation = "coverage cell area (%)", value = ((sum(cells_polygon_stats$area))/transect_area)*100),
             data.frame(observation = "total cells", value = nrow(cells_polygon_stats)),
-            data.frame(observation = "cell density (cells/mm^2)", value = nrow(cells_polygon_stats)/((240*33.66516)/1000000)),
-            data.frame(observation = "ANN", value = ann.p))
+            data.frame(observation = "cell density (cells/cm^2)", value = nrow(cells_polygon_stats)/(transect_area/100000000)),
+            data.frame(observation = "cell ANN", value = ann.p),
+            data.frame(observation = "total biogenic area (μm^2)", value = sum(biogenic_polygon_stats$area)),
+            data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
 
-
+write_csv(cell_summary, "cell_summary.csv")
 
 # #generate chemistry stats -----------------------------------------------
 
