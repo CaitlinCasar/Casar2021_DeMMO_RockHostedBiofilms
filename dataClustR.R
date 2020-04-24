@@ -1,5 +1,7 @@
 suppressPackageStartupMessages(require(optparse))
 
+# opt parse arguments -----------------------------------------------------
+
 option_list = list(
   make_option(c("-f", "--file"), action="store", default=getwd(), type='character',
               help="Name of xray brick file from dataStitchR output."),
@@ -38,6 +40,9 @@ opt = parse_args(OptionParser(option_list=option_list))
 pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager, ggnewscale, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
 
 
+# import the data ---------------------------------------------------------
+
+
 #set working directory
 setwd("/Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/data/DeMMO3/D3T13exp_Dec2019_Poorman/")
 
@@ -54,6 +59,9 @@ biogenic <- "biogenic.tif"
 
 #set scale in number of pixels per micron 
 micron_scale <- 4.2
+
+
+# rasterize/polygonize cells and biogenic features ------------------------
 
 #function for rasterizing or polygonizing
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
@@ -102,48 +110,24 @@ biogenic_polygon <- image_to_polygon(biogenic)
 cells_raster <- image_to_polygon(cells, polygonize = F)
 biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
 
+
+# plot check for testing --------------------------------------------------
 #check plotting if cells are polygons
-rasterVis::gplot(SEM_image) +
-  geom_tile(aes(fill = value)) +
-  scale_fill_gradient(low = 'black', high = 'white') +
-  coord_fixed() +
-  geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
-  geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
-  coord_sf(datum = NA)
+# rasterVis::gplot(SEM_image) +
+#   geom_tile(aes(fill = value)) +
+#   scale_fill_gradient(low = 'black', high = 'white') +
+#   coord_fixed() +
+#   geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
+#   geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+#   coord_sf(datum = NA)
 
-
+# calculate cell centroids for modeling  -----------------------------------------------------------
 # calculate cell centroids 
 cell_centroids <- st_centroid(cells_polygon)
 
 cell_centroids_coords <- cell_centroids %>%
   st_coordinates() %>%
-  as.data.frame() #%>% #this code comes before cells_polygon_stats defined
-  #mutate(shape = cells_polygon_stats$shape,
-         #area = cells_polygon_stats$area) 
-
-#check plotting with density contours
-rasterVis::gplot(SEM_image) +
-  geom_tile(aes(fill = value)) +
-  scale_fill_gradient(low = 'black', high = 'white') +
-  coord_fixed() +
-  ggnewscale::new_scale_color() +
-  geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
-  scale_color_viridis_c() +
-  geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
-  geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
-  coord_sf(datum = NA) +
-  theme(axis.title = element_blank(),
-        axis.text = element_blank(),
-        legend.position = "none")
-
-
-# spatial stats -----------------------------------------------------------
-message("Calculating statistics...")
-
-
-
-# quadrat stats -----------------------------------------------------------
-
+  as.data.frame() 
 #create ppp for point pattern analysis in spatstat
 window <- owin(xrange = c(st_bbox(cell_centroids)$xmin, st_bbox(cell_centroids)$xmax),
                yrange = c(st_bbox(cell_centroids)$ymin, st_bbox(cell_centroids)$ymax))
@@ -151,24 +135,25 @@ window <- owin(xrange = c(st_bbox(cell_centroids)$xmin, st_bbox(cell_centroids)$
 cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, window) %>%
   rescale(micron_scale, "μm")
 
-#compute quadrat grid density and intensity -- add dynamic argument for nx/ny 
-quad_nx = 12
-quad_ny = 3
 
-cells_quadrat <- quadratcount(cell_centroids_ppp, nx = quad_nx, ny = quad_ny)
-cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
-  rename(intensity = Freq)
-
-#*******make nx ny dynamic*********
-
-cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx = quad_nx , ny = quad_ny), xy=T) %>%
-  bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:(quad_nx*quad_ny)), rep_len(1:quad_nx, length(1:(quad_nx*quad_ny)))))))) %>%
-  left_join(cell_dens_intensity) %>%
-  select(Freq, grid_id, intensity) 
-  
+# plot check for testing --------------------------------------------------
 
 
-# point process modeling --------------------------------------------------
+#check plotting with density contours
+# rasterVis::gplot(SEM_image) +
+#   geom_tile(aes(fill = value)) +
+#   scale_fill_gradient(low = 'black', high = 'white') +
+#   coord_fixed() +
+#   ggnewscale::new_scale_color() +
+#   geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+#   scale_color_viridis_c() +
+#   geom_sf(data = cells_polygon, inherit.aes = F, fill = "orange", lwd = 0) +
+#   geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+#   coord_sf(datum = NA) +
+#   theme(axis.title = element_blank(),
+#         axis.text = element_blank(),
+#         legend.position = "none")
+# kest plot --------------------------------------------------
 
 #calculate spatial randomness 
 #do we expect to see clustering?
@@ -181,7 +166,7 @@ kest_plot <- cell_kest %>%
   ggplot(aes(x = r)) +
   geom_line(aes(y = value, color = type))
 
-# generate PDF ------------------------------------------------------------
+# generate PDF 
 message("Generating Kest plot...")
 
 sample_id <- "D1T1exp_Dec2019_Poorman"
@@ -201,10 +186,13 @@ message("...complete.")
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
 plot(ANN ~ eval(1:100), type="b", main=NULL, las=1)
 
+ggplot() +
+  geom_point(aes(x=1:100, y=ANN)) +
+  xlab ("Nth nearest neighbor") +
+  ylab("Average distance (μm)")
 
 ann.p <- mean(nndist(cell_centroids_ppp, k=1))
 
-#element_probabilities <- list()  ##not sure what I was going for here...
 #generate random distribution of cells as null model
 n = 599L
 ann.r <- vector(length=n) # Create an empty object to be used to store simulated ANN values
@@ -236,41 +224,33 @@ ggplot()+
         axis.ticks = element_blank())
 
 #plot ANN random vs. population
-ggplot(as.data.frame(ann.r), aes(x=ann.r)) + 
+sample_id <- "D3T13exp_Dec2019_Poorman"
+ANN_hist <- ggplot(as.data.frame(ann.r), aes(x=ann.r)) + 
   geom_histogram(color="#999999", bins=100, alpha = 0.5) +
   geom_vline(aes(xintercept=mean(ann.r)),
              color="#2b2d2f", linetype="dashed", size=1) +
   geom_vline(aes(xintercept=ann.p),
              color="#E69F00", linetype="dashed", size=1) +
   xlim(0, max(ann.r) + 10) +
-  labs(y= "Frequency", x = "ANN Distance (μm)") +
+  labs(y= "Frequency", x = expression("ANN Distance ("~mu~"m)")) +
   annotate("text", x = 0, y =5, size = 3, label = paste0("pseudo p-value: ", "\n", p), hjust = "left")
+
+pdf(paste0(sample_id, "_ANN_hist.pdf"),
+    width = 13.33, 
+    height = 7.5)
+
+print(ANN_hist)
+
+dev.off()
+
+message("...complete.")
 
 
 #p = chance that given an infinite number of simulations at least one realization of a point pattern could produce an ANN value more extreme than this sample
 
+# element point process models --------------------------------------------
 
-#element_probabilities[[length(names(xray_brick)) + 1]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
 
-
-# #test whether element distribution explains cell distribution 
-# element_probabilities <- list()
-# #this loop takes ~6 minutes per element...
-# for(j in 1:length(names(xray_brick))){
-#   message(paste0("Calculating covariate stats for ", names(xray_brick)[j], ", element ", j, " of ", length(names(xray_brick)), "..."))
-#   n = 599L
-#   ann.r <- vector(length=n)
-#   xray_im <- as.im(xray_brick[[j]]) %>%
-#     rescale(micron_scale, "μm")
-#   for (i in 1:n){
-#     rand.p   <- rpoint(n=cell_centroids_ppp$n, f = xray_im) 
-#     ann.r[i] <- mean(nndist(rand.p, k=1))
-#   }
-#   N.greater <- sum(ann.r > ann.p)
-#   element_probabilities[[j]] <- min(N.greater + 1, n + 1 - N.greater) / (n +1)
-# }
-
-#point process model
 #test whether elements explain cell distribution
 
 #add a limit to number of model variables based on rel abundance of elements
@@ -289,15 +269,6 @@ for(k in 1:length(names(xray_brick))){
 }
 
 #calculate p-values for each element combination to see if any significantly expain cell distribution
-# element_probabilities <- list()
-# for(i in 1:length(element_combos)){
-#   #print(paste(unlist(element_combos[i]), collapse = "+"))
-#   ppm1 <- eval(parse(text=(paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")"))))
-#   ppm0 <- ppm(cell_centroids_ppp ~ 1)
-#   element_probabilities[[i]] <- unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
-# }
-
-#this took ~20 minutes to run ~3000 out of 16k combos
 
 element_models <- list()
 for(i in 1:length(element_combos)){
@@ -314,54 +285,42 @@ element_prob_function <- function(element_model_list){
 #note that MASS masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
 element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = detectCores())
 
-element_probabilities <- lapply(element_models, element_prob_function)
-
-#my computer has 4 cores, so this will prob still take an hour to run 
+#element_probabilities <- lapply(element_models, element_prob_function)
 
 element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
-  mutate(model = element_models,
+  mutate(model = unlist(element_models),
          elements = element_combos) 
 
+#write data to csv
+element_probs %>% dplyr::select(-elements) %>% write_csv("cell_distribution_models.csv")
+
+# plot Spearman local correlation over cells + elements from most --------
 sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()))
-
-
-#calculate Spearman correlation over pixels between cells + all elements and between biogenic + all elements
-# r1 <- aggregate(xray_brick[[16]], 3, mean)
-# r2 <- aggregate(cells_raster, 3, mean)
-# rc <- corLocal(r1, r2, method='spearman') #this step takes ~1 minute to run at agg factor of 3
-
 
 element_raster_list <- list()
 for(i in 1:length(sig_elements)){
   element_raster_list[i] <- xray_brick[[sig_elements[i]]]
 }
-
-
 cells_aggregated <- aggregate(cells_raster, 3, mean)
 
 cell_element_corr_fun <- function(element){
-  #message(paste0("Calculating Spearman correlation between cells and ", names(element), "..."))
   element_aggregated <- aggregate(element, 3, mean)
   corLocal(element_aggregated, cells_aggregated, method='spearman')
 }
 cell_element_corr <- lapply(element_raster_list, cell_element_corr_fun)
+
+#stack rasters
 cell_element_corr_stack <- stack(cell_element_corr)
 names(cell_element_corr_stack) <- element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()
 
-
-
-#parallelizing does not work on this for some reason
-#cell_element_corr <- mclapply(element_raster_list, cell_element_corr_fun, mc.cores = detectCores())
-
+#create custom themes for levelplot
 myTheme <- rasterTheme(region = c(zeroCol, viridis::viridis(30)))
-#myTheme$panel.background$col = 'gray' 
 zeroCol <- NA
 element_theme <- rasterTheme(region = c(zeroCol, 'orange'))
 
 # Customize the colorkey
 my.at <- seq(-1, 1, length.out=length(myTheme$regions$col)-1)
 my.ckey <- list(at=my.at, col=myTheme$regions$col)
-
 
 background_stack <- list()
 for(i in 1:length(sig_elements)){
@@ -379,9 +338,10 @@ cell_element_corr_plot <- rasterVis::levelplot(cell_element_corr_stack, par.sett
                      xlab=NULL, ylab=NULL, scales=list(draw=FALSE)) 
 cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/ncol(SEM_image)) #set the aspect ratio for the plots
 
+#generate PDF
 background_image +  element_background_plot + cell_element_corr_plot
 
-test <- mask(xray_brick[[16]], cells_polygon)
+# calculate total correlation between cells/biogenic features and --------
 
 total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
 cell_mat <- as.matrix(cells_raster)
@@ -396,6 +356,10 @@ for(i in 1:length(names(xray_brick))){
   
 }
 
+#write data to csv
+write_csv(total_cor, "total_corrlation.csv")
+
+#generate PDF
 total_cor %>%
   dplyr::select(-cell_pval, -biogenic_pval) %>%
   gather(type, cor, cell_cor:biogenic_cor) %>%
@@ -407,7 +371,7 @@ total_cor %>%
 
 
 # summarize data ----------------------------------------------------------
-message("Generating reports...")
+message("Generating summary reports...")
 
 
 # generate cell stats -----------------------------------------------------
@@ -454,9 +418,11 @@ cell_summary <- cells_polygon_stats %>%
             data.frame(observation = "total cells", value = nrow(cells_polygon_stats)),
             data.frame(observation = "cell density (cells/cm^2)", value = nrow(cells_polygon_stats)/(transect_area/100000000)),
             data.frame(observation = "cell ANN", value = ann.p),
+            data.frame(observation = "mean random ANN", value = mean(ann.r)),
             data.frame(observation = "total biogenic area (μm^2)", value = sum(biogenic_polygon_stats$area)),
             data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
 
+#write data to csv
 write_csv(cell_summary, "cell_summary.csv")
 
 # #generate chemistry stats -----------------------------------------------
@@ -484,11 +450,13 @@ transect_summary <- as.data.frame(xray_brick, xy = T) %>%
 element_summary <- overview_summary %>%
   full_join(transect_summary)
 
-# plot the data -----------------------------------------------------------
+#write data to csv
+write_csv(element_summary, "element_summary.csv")
+# plot element data with density contours -----------------------------------------------------------
 
 #generate element map with cells 
 
-message("Generating element plot...")
+message("Generating density contour plot...")
 # Set color palette
 
 #palette source: https://sciencenotes.org/molecule-atom-colors-cpk-colors/
@@ -584,7 +552,7 @@ element_plot_with_legend <- plot_grid(
 )
 
 
-# generate PDF ------------------------------------------------------------
+#generatePDF
 sample_id <- "D1T1exp_Dec2019_Poorman"
 pdf(paste0(sample_id, "_density_plot.pdf"),
     width = 13.33, 
@@ -596,8 +564,22 @@ dev.off()
 
 message("...complete.")
 
-#generate quadrat plot
+
+# quadrat plot ------------------------------------------------------------
 message("Generating quadrat plot...")
+
+#compute quadrat grid density and intensity  
+quad_nx = 12
+quad_ny = 3
+
+cells_quadrat <- quadratcount(cell_centroids_ppp, nx = quad_nx, ny = quad_ny)
+cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) %>%
+  rename(intensity = Freq)
+
+cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx = quad_nx , ny = quad_ny), xy=T) %>%
+  bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:(quad_nx*quad_ny)), rep_len(1:quad_nx, length(1:(quad_nx*quad_ny)))))))) %>%
+  left_join(cell_dens_intensity) %>%
+  select(Freq, grid_id, intensity) 
 
 quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/quad_nx, extent(SEM_image)[4]/quad_ny)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
@@ -624,7 +606,7 @@ quadrat_plot <- rasterVis::gplot(SEM_image) +
   labs(x = "") +
   labs(y = "") 
 
-# generate PDF ------------------------------------------------------------
+#generate PDF
 sample_id <- "D1T1exp_Dec2019_Poorman"
 pdf(paste0(sample_id, "_quadrat_plot.pdf"),
     width = 13.33, 
