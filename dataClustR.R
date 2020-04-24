@@ -11,14 +11,16 @@ option_list = list(
               help="Output file directory. This is where your reports and plots will be saved."),
   make_option(c("-n", "--name"), action="store", default=NA, type='character',
               help="Optional name for output files."),
-  # make_option(c("-b", "--base-images"), action="store", default=NA, type='character',
-  #             help="SEM image file directory."),
+  make_option(c("-b", "--base"), action="store", default=NA, type='character',
+              help="Required file path for SEM panoramic tif from dataStitchR ouput."),
   make_option(c("-c", "--cores"), action="store", default=1, type='character',
               help="Number of cores to use for parallel processing, default is 1."),
   make_option(c("-u", "--use-scale"), action="store", default=1, type='character',
               help="Optional scale to use for converting pixels to microns."),
-  # make_option(c("-z", "--z-format"), action="store", default="*", type='character',
-  #             help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
+  make_option(c("-z", "--cells"), action="store", default=NA, type='character',
+              help="Required file path to tif file of cell features."),
+  make_option(c("-g", "--biogenic"), action="store", default=NA, type='character',
+              help="Optional filt path for tif file of biogenic features."),
   make_option(c("-m", "--model_vars"), action="store", default=1, type='character',
               help="Required number of variables to include in point process models where variables are elements."),
   make_option(c("-d", "--d_cols"), action="store", default=12, type='character',
@@ -49,11 +51,13 @@ if(!is.na(opt$overview)){
 }
 
 #load base SEM image
-SEM_image <- raster("D3T13exp_Dec2019_SEM_pano.tif")
+SEM_image <- raster(opt$b)
 
 #cell and biogenic feature image paths
-cells <- "cells.tif"
-biogenic <- "biogenic.tif"
+cells <- opt$cells
+if(!is.na(opt$biogenic)){
+  biogenic <- opt$biogenic
+}
 
 #set scale in number of pixels per micron 
 micron_scale <- opt$u
@@ -156,10 +160,11 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
 
 #generate cell and biogenic feature polygons and rasters
 cells_polygon <- image_to_polygon(cells)
-biogenic_polygon <- image_to_polygon(biogenic)
-
 cells_raster <- image_to_polygon(cells, polygonize = F)
-biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
+if(!is.na(opt$biogenic)){
+  biogenic_polygon <- image_to_polygon(biogenic)
+  biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
+}
 
 
 # plot check for testing --------------------------------------------------
@@ -399,34 +404,59 @@ local_corr_plot <- background_image +  element_background_plot + cell_element_co
 plot_PDF(local_corr_plot, "local_correlation")
 
 # calculate total correlation between cells/biogenic features and --------
-
-total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
-cell_mat <- as.matrix(cells_raster)
-biogenic_mat <- as.matrix(biogenic_raster)
-for(i in 1:length(names(xray_brick))){
-  element_mat <- as.matrix(xray_brick[[i]])
-  result <- cor.test(element_mat, cell_mat)
-  result2 <- cor.test(element_mat, biogenic_mat)
-  total_cor <- total_cor %>% add_row(element = names(xray_brick[[i]]), 
-                                     cell_cor = result$estimate, cell_pval = result$p.value,
-                                     biogenic_cor = result2$estimate, biogenic_pval = result2$p.value)
+if(!is.na(opt$biogenic)){
+  total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
+  cell_mat <- as.matrix(cells_raster)
+  biogenic_mat <- as.matrix(biogenic_raster)
+  for(i in 1:length(names(xray_brick))){
+    element_mat <- as.matrix(xray_brick[[i]])
+    result <- cor.test(element_mat, cell_mat)
+    result2 <- cor.test(element_mat, biogenic_mat)
+    total_cor <- total_cor %>% add_row(element = names(xray_brick[[i]]), 
+                                       cell_cor = result$estimate, cell_pval = result$p.value,
+                                       biogenic_cor = result2$estimate, biogenic_pval = result2$p.value)
+    
+  }
+  #write data to csv
+  write_data(total_cor, "total_correlation")
   
+  #generate PDF
+  total_cor <- total_cor %>%
+    dplyr::select(-cell_pval, -biogenic_pval) %>%
+    gather(type, cor, cell_cor:biogenic_cor) %>%
+    ggplot() +
+    geom_line(aes(reorder(element, cor), cor, color = type, group=type)) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    xlab("Element") +
+    ylab("Correlation")
+  
+  plot_PDF(total_cor, "total_correlation")
+}else{
+  total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric())
+  cell_mat <- as.matrix(cells_raster)
+  for(i in 1:length(names(xray_brick))){
+    element_mat <- as.matrix(xray_brick[[i]])
+    result <- cor.test(element_mat, cell_mat)
+    total_cor <- total_cor %>% add_row(element = names(xray_brick[[i]]), 
+                                       cell_cor = result$estimate, cell_pval = result$p.value)
+    
+  }
+  #write data to csv
+  write_data(total_cor, "total_correlation")
+  
+  #generate PDF
+  total_cor <- total_cor %>%
+    ggplot() +
+    geom_line(aes(reorder(element, cell_cor), cell_cor, group=1)) +
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    xlab("Element") +
+    ylab("Correlation")
+  
+  plot_PDF(total_cor, "total_correlation")
 }
 
-#write data to csv
-write_data(total_cor, "total_correlation")
 
-#generate PDF
-total_cor <- total_cor %>%
-  dplyr::select(-cell_pval, -biogenic_pval) %>%
-  gather(type, cor, cell_cor:biogenic_cor) %>%
-  ggplot() +
-  geom_line(aes(reorder(element, cor), cor, color = type, group=type)) +
-  geom_hline(yintercept = 0, linetype = "dashed")+
-  xlab("Element") +
-  ylab("Correlation")
 
-plot_PDF(total_cor, "total_correlation")
 
 
 # generate cell stats -----------------------------------------------------
@@ -455,9 +485,10 @@ cells_polygon_stats <- cells_polygon_stats %>%
   mutate(shape = case_when(roundness < 1.12 ~ "cocci",
                            roundness >= 1.12 & roundness < 5 ~"rod",
                            TRUE ~ "filament"))
-
-biogenic_polygon_stats <- biogenic_polygon %>%
-  mutate(area = st_area(geometry)/(micron_scale^2))
+if(!is.na(opt$biogenic)){
+  biogenic_polygon_stats <- biogenic_polygon %>%
+    mutate(area = st_area(geometry)/(micron_scale^2))
+}
   
 
 transect_area <- ((extent(SEM_image)[2])/micron_scale)*((extent(SEM_image)[4])/micron_scale)
@@ -473,9 +504,13 @@ cell_summary <- cells_polygon_stats %>%
             data.frame(observation = "total cells", value = nrow(cells_polygon_stats)),
             data.frame(observation = "cell density (cells/cm^2)", value = nrow(cells_polygon_stats)/(transect_area/100000000)),
             data.frame(observation = "cell ANN", value = ann.p),
-            data.frame(observation = "mean random ANN", value = mean(ann.r)),
-            data.frame(observation = "total biogenic area (μm^2)", value = sum(biogenic_polygon_stats$area)),
-            data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
+            data.frame(observation = "mean random ANN", value = mean(ann.r)))
+            
+if(!is.na(opt$biogenic)){
+  cell_summary <- cell_summary %>%
+  bind_rows(data.frame(observation = "total biogenic area (μm^2)", value = sum(biogenic_polygon_stats$area)),
+  data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
+}            
 
 #write data to csv
 write_data(cell_summary, "cell_summary")
