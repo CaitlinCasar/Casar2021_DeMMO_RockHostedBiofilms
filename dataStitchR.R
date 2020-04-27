@@ -134,25 +134,25 @@ message("...complete.")
 
 
 #write the brick
-message("Writing brick...")
+message("Writing transect x-ray brick...")
 
 
 if(!is.na(opt$out)){
   dir.create(opt$out)
   if(!is.na(opt$n)){
-    out_brick <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_transect_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }else{
-    out_brick <- writeRaster(xray_brick, path = opt$out, "brick.grd", overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, path = opt$out, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, path = opt$out, "transect_brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, path = opt$out, "transect_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }
 }else{
   if(!is.na(opt$n)){
-    out_brick <- writeRaster(xray_brick, paste0(opt$n,"_brick.grd"), overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, paste0(opt$n,"_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, paste0(opt$n,"_transect_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(opt$n,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }else{
-    out_brick <- writeRaster(xray_brick, "brick.grd", overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, "brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, "transect_brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, "transect_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }
 }
 

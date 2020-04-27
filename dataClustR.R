@@ -4,59 +4,66 @@ suppressPackageStartupMessages(require(optparse))
 
 option_list = list(
   make_option(c("-f", "--file"), action="store", default=getwd(), type='character',
-              help="Name of xray brick file from dataStitchR output."),
+              help="Directory containing files from dataStitchR output and feature data."),
+  make_option(c("-k", "--transect"), action="store", default=NA, type='character',
+              help="Regex pattern for brick of xray transect from dataStitchR output"),
   make_option(c("-t", "--overview"), action="store", default=NA, type='character',
-              help="Optional brick of overview area from dataStitchR output"),
+              help="Optional regex pattern of brick of overview area from dataStitchR output"),
   make_option(c("-o", "--out"), action="store", default=NA, type='character',
               help="Output file directory. This is where your reports and plots will be saved."),
   make_option(c("-n", "--name"), action="store", default=NA, type='character',
               help="Optional name for output files."),
   make_option(c("-b", "--base"), action="store", default=NA, type='character',
               help="Required file path for SEM panoramic tif from dataStitchR ouput."),
-  make_option(c("-c", "--cores"), action="store", default=1, type='character',
+  make_option(c("-c", "--cores"), action="store", default=1, type='numeric',
               help="Number of cores to use for parallel processing, default is 1."),
-  make_option(c("-u", "--use-scale"), action="store", default=1, type='character',
+  make_option(c("-u", "--use-scale"), action="store", default=1, type='numeric',
               help="Optional scale to use for converting pixels to microns."),
   make_option(c("-z", "--cells"), action="store", default=NA, type='character',
               help="Required file path to tif file of cell features."),
-  make_option(c("-g", "--biogenic"), action="store", default=NA, type='character',
+  make_option(c("-a", "--biogenic"), action="store", default=NA, type='character',
               help="Optional filt path for tif file of biogenic features."),
-  make_option(c("-m", "--model_vars"), action="store", default=1, type='character',
+  make_option(c("-m", "--model_vars"), action="store", default=1, type='numeric',
               help="Required number of variables to include in point process models where variables are elements."),
-  make_option(c("-d", "--d_cols"), action="store", default=12, type='character',
+  make_option(c("-d", "--d_cols"), action="store", default=12, type='numeric',
               help="Optional number of columns for quadrat grid."),
-  make_option(c("-y", "--y_rows"), action="store", default=3, type='character',
+  make_option(c("-y", "--y_rows"), action="store", default=3, type='numeric',
               help="Optional number of rows for quadrat grid."),
   make_option(c("-v", "--verbose"), action="store_true", default=TRUE,
               help="Print updates to console [default %default]."),
   make_option(c("-q", "--quiet"), action="store_false", dest="verbose",
               help="Do not print anything to the console."),
   make_option(c("-p", "--pdf"), action="store", default=FALSE,
-              help="Generate summary plots, default is FALSE [default %default].")  
+              help="Generate element plot with density contours, default is FALSE [default %default].")  
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
 
 
 #load dependencies
-pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, lwgeom, units, raster, rgeos, imager, ggnewscale, stars, fasterRaster, cowplot, tidyverse, rgdal, rasterVis)
-
+pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, units, raster, rgeos, imager, ggnewscale,  cowplot, tidyverse, rgdal, rasterVis, magick)
+#removed fasterRaster, lwgeom,stars,
 
 # import the data ---------------------------------------------------------
+message("importing data...")
+files <- list.files(opt$f, full.names = T)
 
 #load xray raster bricks
-xray_brick <- brick(opt$f) 
-if(!is.na(opt$overview)){
-  overview_brick <- brick(opt$overview)
-}
+message("importing xray brick")
+xray_brick <- brick(files[str_detect(files, opt$transect)]) 
 
+if(!is.na(opt$overview)){
+  message("importing overview brick")
+  overview_brick <- brick(files[str_detect(files, opt$overview)])
+}
+message("importing SEM pano")
 #load base SEM image
-SEM_image <- raster(opt$b)
+SEM_image <- raster(files[str_detect(files, opt$base)])
 
 #cell and biogenic feature image paths
-cells <- opt$cells
+cells <- files[str_detect(files, opt$cells)]
 if(!is.na(opt$biogenic)){
-  biogenic <- opt$biogenic
+  biogenic <- files[str_detect(files, opt$biogenic)]
 }
 
 #set scale in number of pixels per micron 
@@ -122,15 +129,14 @@ write_data <- function(data, file_name){
 image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
   if(equalizer == T){
     message("reading image...")
-    image <- image_path %>% image_read() %>% image_quantize(colorspace = 'gray') %>% image_equalize() 
+    image <- image_path %>% image_read() %>% image_quantize(colorspace = 'gray')
     image
     if(to_raster == T){
       message("rasterizing...")
       temp_file <- tempfile()
       image_write(image, path = temp_file, format = 'tiff')
-      image_raster_noThresh <- raster(temp_file) #%>%
-        #cut(breaks = c(-Inf, 150, Inf)) - 1
-      image_raster <- image_raster_noThresh %>% setValues(if_else(values(image_raster_noThresh) > 150, 0, 1))
+      image_raster_noThresh <- raster(temp_file) 
+      image_raster <- image_raster_noThresh %>% setValues(if_else(values(image_raster_noThresh) > 0, 1, 0))
       image_raster 
       if(polygonize == TRUE){
         message("polygonizing...")
@@ -140,12 +146,14 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
           message("processing drop and fill...")
           image_polygon_drop_fill <- image_polygon %>% 
             st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
-            fill_holes(threshold = 100) %>%
-            drop_crumbs(threshold = 50) %>% #raster to polygon was creating some tiny polygons 
+            fill_holes(threshold = 50) %>%
+            drop_crumbs(threshold = 10) %>% #raster to polygon was creating some tiny polygons 
             st_cast("POLYGON")
           image_polygon_drop_fill
         }else{
-          image_polygon
+          image_polygon %>%
+            st_set_crs("+proj=utm +zone=19 +ellps=GRS80 +datum=NAD83 +units=m") %>%
+            st_cast("POLYGON")
         }
       }else{
         image_raster
@@ -158,11 +166,13 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
   }
 }
 
+message("transforming cell data...")
 #generate cell and biogenic feature polygons and rasters
-cells_polygon <- image_to_polygon(cells)
+cells_polygon <- image_to_polygon(cells, drop_and_fill = F)
 cells_raster <- image_to_polygon(cells, polygonize = F)
 if(!is.na(opt$biogenic)){
-  biogenic_polygon <- image_to_polygon(biogenic)
+  message("transforming cell data...")
+  biogenic_polygon <- image_to_polygon(biogenic, drop_and_fill = F)
   biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
 }
 
@@ -178,6 +188,7 @@ if(!is.na(opt$biogenic)){
 #   coord_sf(datum = NA)
 
 # calculate cell centroids for modeling  -----------------------------------------------------------
+message("Preparing data for modeling...")
 # calculate cell centroids 
 cell_centroids <- st_centroid(cells_polygon)
 
@@ -213,7 +224,7 @@ cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, wind
 
 #do we expect to see clustering?
 #Where K falls under the theoretical Kpois line the points are more clustered at distance r, and vis versa
-
+message("Modeling spatial randomness...")
 cell_fest <- Fest(cell_centroids_ppp) %>%
   dplyr::select(-hazard, -theohaz) %>%
   gather(type, value, theo:km) %>%
@@ -244,15 +255,12 @@ ppm_all_plot <- cell_fest %>%
 
 
 # generate PDF 
-message("Generating Kest plot...")
 
 plot_PDF(ppm_all_plot, "ppm_models")
 
-message("...complete.")
-
 
 # Calculate ANN -----------------------------------------------------------
-
+message("Calculating ANN...")
 ANN <- apply(nndist(cell_centroids_ppp, k=1:100),2,FUN=mean)
 
 ANN_plot <- ggplot() +
@@ -313,6 +321,7 @@ plot_PDF(ANN_hist, "ANN_hist")
 #p = chance that given an infinite number of simulations at least one realization of a point pattern could produce an ANN value more extreme than this sample
 
 # element point process models --------------------------------------------
+message("Modeling cell distribution as a function of rock chemistry...")
 #test whether elements explain cell distribution
 
 #add a limit to number of model variables based on rel abundance of elements
@@ -356,6 +365,7 @@ element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
 element_probs %>% dplyr::select(-elements) %>% write_data("cell_distribution_models")
 
 # plot Spearman local correlation over cells + elements from most --------
+message("Modeling local correlation between cells and rock elements...")
 sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()))
 
 element_raster_list <- list()
@@ -375,8 +385,8 @@ cell_element_corr_stack <- stack(cell_element_corr)
 names(cell_element_corr_stack) <- element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()
 
 #create custom themes for levelplot
-myTheme <- rasterTheme(region = c(zeroCol, viridis::viridis(30)))
 zeroCol <- NA
+myTheme <- rasterTheme(region = c(zeroCol, viridis::viridis(30)))
 element_theme <- rasterTheme(region = c(zeroCol, 'orange'))
 
 # Customize the colorkey
@@ -403,7 +413,8 @@ cell_element_corr_plot <- update(cell_element_corr_plot, aspect=nrow(SEM_image)/
 local_corr_plot <- background_image +  element_background_plot + cell_element_corr_plot
 plot_PDF(local_corr_plot, "local_correlation")
 
-# calculate total correlation between cells/biogenic features and --------
+# calculate total correlation between cells/biogenic features and elements--------
+message("Calculating total correlation between cells/biogenic features and elements...")
 if(!is.na(opt$biogenic)){
   total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
   cell_mat <- as.matrix(cells_raster)
@@ -460,7 +471,7 @@ if(!is.na(opt$biogenic)){
 
 
 # generate cell stats -----------------------------------------------------
-
+message("Generating cell summary report...")
 #function to draw ellipses around cell polygons, measure major and minor axes 
 ellipsoid_fun <- function(data){
   polygon_coords <- data %>%
@@ -478,8 +489,8 @@ ellipsoid_fun <- function(data){
 
 #generate table of cell stats
 cells_polygon_stats <- cells_polygon %>%
-  mutate(area = st_area(geometry)/(micron_scale^2),
-         perimeter = st_perimeter(geometry)/micron_scale)
+  mutate(area = st_area(geometry)/(micron_scale^2))#,
+         #perimeter = st_perimeter(geometry)/micron_scale)
 cells_polygon_stats$roundness <- sapply(cells_polygon$geometry, ellipsoid_fun)
 cells_polygon_stats <- cells_polygon_stats %>%
   mutate(shape = case_when(roundness < 1.12 ~ "cocci",
@@ -516,6 +527,7 @@ if(!is.na(opt$biogenic)){
 write_data(cell_summary, "cell_summary")
 
 # #generate chemistry stats -----------------------------------------------
+message("Generating rock chemistry report...")
 #bulk chemistry of transect 
 transect_summary <- as.data.frame(xray_brick, xy = T) %>%
   replace(is.na(.), 0) %>%
@@ -547,7 +559,7 @@ write_data(element_summary, "element_summary")
 # plot element data with density contours -----------------------------------------------------------
 
 #generate element map with cells 
-
+if(opt$p){
 message("Generating density contour plot...")
 # Set color palette
 
@@ -596,7 +608,7 @@ element_plotter<-function(coord_frame, brick, SEM_image, colors, density=TRUE){
       ggnewscale::new_scale_fill()
   }
   message("Writing element plot...")
-  if(density){
+  if(!is.na(opt$biogenic)){
     suppressWarnings(print(p + 
                              coord_fixed() +
                              ggnewscale::new_scale_color() +
@@ -611,8 +623,11 @@ element_plotter<-function(coord_frame, brick, SEM_image, colors, density=TRUE){
   }else{
     suppressWarnings(print(p + 
                              coord_fixed() +
-                             coord_sf(datum = NA)  +
+                             ggnewscale::new_scale_color() +
+                             geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+                             scale_color_viridis_c() +
                              geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+                             coord_sf(datum = NA)  +
                              theme(axis.title = element_blank(),
                                    axis.text = element_blank(),
                                    legend.position = "none")))
@@ -630,7 +645,7 @@ element_plot_legend <- data.frame(element = unique(xray_frame$element)) %>%
         legend.text = ggplot2::element_text(size = 8))
 
 ##element plot with no density contours
-element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors, density = F)
+#element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors, density = F)
 
 ##element plot with density contours
 element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors)
@@ -647,9 +662,7 @@ element_plot_with_legend <- plot_grid(
 #generatePDF
 plot_PDF(element_plot_with_legend, "density_contour_with_elements")
 
-
-message("...complete.")
-
+}
 
 # quadrat plot ------------------------------------------------------------
 message("Generating quadrat plot...")
@@ -665,7 +678,7 @@ cell_dens_intensity <- as.data.frame(intensity(cells_quadrat, image=F), xy = T) 
 cells_quadrat <- as.data.frame(quadratcount(cell_centroids_ppp, nx = quad_nx , ny = quad_ny), xy=T) %>%
   bind_cols(data.frame("grid_id" = unlist(rev(split(rev(1:(quad_nx*quad_ny)), rep_len(1:quad_nx, length(1:(quad_nx*quad_ny)))))))) %>%
   left_join(cell_dens_intensity) %>%
-  select(Freq, grid_id, intensity) 
+  dplyr::select(Freq, grid_id, intensity) 
 
 quadrat_grid <- st_make_grid(SEM_image, cellsize = c(extent(SEM_image)[2]/quad_nx, extent(SEM_image)[4]/quad_ny)) %>% 
   st_sf(grid_id = 1:length(.)) %>% left_join(cells_quadrat)
