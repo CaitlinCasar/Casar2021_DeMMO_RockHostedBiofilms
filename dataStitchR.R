@@ -42,7 +42,7 @@ option_list = list(
               help="SEM image file directory."),
   make_option(c("-c", "--coords"), action="store", default=NA, type='character',
               help="Tab-delimited file of xy coordinates for each image. A third column should denote stitching positions that correspond to the file names for each image."),
-  make_option(c("-u", "--use-positions"), action="store", default="-?(?<![Kα1||Kα1_2])\\d+", type='character',
+  make_option(c("-u", "--use-positions"), action="store", default="pos.*?\\K-?\\d+", type='character',
               help="Optional regex pattern to extract position IDs from each file name that corresponds to positions in the xy file. The default searches for numbers that appear after 'Kα1' or 'Kα2'. Numbers can include signs, i.e. -1 is acceptable."),
   make_option(c("-z", "--z-format"), action="store", default="*", type='character',
               help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
@@ -65,7 +65,6 @@ option_list = list(
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
-
 #load dependencies 
 suppressPackageStartupMessages(require(pacman))
 pacman::p_load(raster, magick, tidyverse, rasterVis, ggnewscale, Hmisc, cowplot)
@@ -82,6 +81,7 @@ xy <- read_delim(opt$c, delim = "\t", col_types = cols())
 positions <- xy %>%
   select(-x, -y)
 
+message(paste0("Importing data from ", opt$n, "..."))
 
 # stitch xray images ------------------------------------------------------
 
@@ -97,14 +97,14 @@ for(j in 1:length(directories)){
   if(length(files) >0){
     xray_data[[j]] <- str_extract(path, "([^/]+$)")
     message(paste0("Stitching ",xray_data[[j]], " data (element ", j, " of ", length(directories), ")..."))
-    xy_id <- which(positions[[1]] %in% str_extract(files, opt$u))
+    xy_id <- which(positions[[1]] %in% regmatches(files, regexpr(opt$u, files, perl=TRUE)))
     panorama <- list()
     for(i in 1:length(files)){
       message(paste0("Processing image ", i, " of ", length(files), "..."))
       image <- files[i] %>% image_read() %>%
         image_quantize(colorspace = 'gray') 
       temp_file <- tempfile()
-      image_write(image, path = temp_file, format = 'tiff')
+      image_write(image, path = temp_file, format = 'tiff', depth = 16)
       image_noThresh <- raster(temp_file)
       image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 0, 1, 0))
       image <- aggregate(image, fact=4)
@@ -113,9 +113,10 @@ for(j in 1:length(directories)){
       values(image_raster) <- values(image)
       panorama[[xy_id[i]]] <- image_raster
     }
-      empty_xy_id <- which(!positions[[1]] %in% str_extract(files, opt$u))
+      empty_xy_id <- which(!positions[[1]] %in% regmatches(files, regexpr(opt$u, files, perl=TRUE)))
       if(length(empty_xy_id) > 0){
         for(k in 1:length(empty_xy_id)){
+          message(paste0("creating empty raster for missing position: ", empty_xy_id[[k]]))
           empty_raster_extent <- extent(matrix(c(xy$x[empty_xy_id[k]], xy$x[empty_xy_id[k]] + 1024, xy$y[empty_xy_id[k]], xy$y[empty_xy_id[k]]+704), nrow = 2, ncol = 2, byrow = T))
           empty_raster <- setExtent(raster(nrows = 704, ncols = 1024), empty_raster_extent, keepres = F)
           values(empty_raster) <- 0
@@ -171,12 +172,11 @@ if(!is.na(opt$overview)){
       overview_data[[i]] <- str_extract(path, "([^/]+$)")
       message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
       image <- files %>% image_read() %>% 
-        image_quantize(colorspace = 'gray') %>% 
-        image_equalize() 
+        image_quantize(colorspace = 'gray')  
       temp_file <- tempfile()
-      image_write(image, path = temp_file, format = 'tiff')
-      image <- raster(temp_file) %>%
-        cut(breaks = c(-Inf, 150, Inf)) - 1
+      image_write(image, path = temp_file, format = 'tiff', depth = 16)
+      image_noThresh <- raster(temp_file) 
+      image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 0, 1, 0))
       image <- aggregate(image, fact=4)
       overview_brick_list[[i]] <- image
     }

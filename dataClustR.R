@@ -45,7 +45,7 @@ pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, 
 #removed fasterRaster, lwgeom,stars,
 
 # import the data ---------------------------------------------------------
-message("importing data...")
+message(paste0("Importing data from ", opt$n, "..."))
 files <- list.files(opt$f, full.names = T)
 
 #load xray raster bricks
@@ -170,8 +170,8 @@ message("transforming cell data...")
 #generate cell and biogenic feature polygons and rasters
 cells_polygon <- image_to_polygon(cells, drop_and_fill = F)
 cells_raster <- image_to_polygon(cells, polygonize = F)
-if(!is.na(opt$biogenic)){
-  message("transforming cell data...")
+if(!is.na(opt$biogenic) & length(biogenic) > 0){
+  message("transforming biogenic data...")
   biogenic_polygon <- image_to_polygon(biogenic, drop_and_fill = F)
   biogenic_raster <- image_to_polygon(biogenic, polygonize = F)
 }
@@ -415,7 +415,7 @@ plot_PDF(local_corr_plot, "local_correlation")
 
 # calculate total correlation between cells/biogenic features and elements--------
 message("Calculating total correlation between cells/biogenic features and elements...")
-if(!is.na(opt$biogenic)){
+if(!is.na(opt$biogenic) & length(biogenic) > 0){
   total_cor <- data.frame(element = character(), cell_cor = numeric(), cell_pval = numeric(), biogenic_cor = numeric(), biogenic_pval = numeric())
   cell_mat <- as.matrix(cells_raster)
   biogenic_mat <- as.matrix(biogenic_raster)
@@ -496,7 +496,7 @@ cells_polygon_stats <- cells_polygon_stats %>%
   mutate(shape = case_when(roundness < 1.12 ~ "cocci",
                            roundness >= 1.12 & roundness < 5 ~"rod",
                            TRUE ~ "filament"))
-if(!is.na(opt$biogenic)){
+if(!is.na(opt$biogenic) & length(biogenic) > 0){
   biogenic_polygon_stats <- biogenic_polygon %>%
     mutate(area = st_area(geometry)/(micron_scale^2))
 }
@@ -517,7 +517,7 @@ cell_summary <- cells_polygon_stats %>%
             data.frame(observation = "cell ANN", value = ann.p),
             data.frame(observation = "mean random ANN", value = mean(ann.r)))
             
-if(!is.na(opt$biogenic)){
+if(!is.na(opt$biogenic) & length(biogenic) > 0){
   cell_summary <- cell_summary %>%
   bind_rows(data.frame(observation = "total biogenic area (μm^2)", value = sum(biogenic_polygon_stats$area)),
   data.frame(observation = "coverage biogenic area (%)", value = ((sum(biogenic_polygon_stats$area))/transect_area)*100))
@@ -608,26 +608,26 @@ element_plotter<-function(coord_frame, brick, SEM_image, colors, density=TRUE){
       ggnewscale::new_scale_fill()
   }
   message("Writing element plot...")
-  if(!is.na(opt$biogenic)){
+  if(!is.na(opt$biogenic) & length(biogenic) > 0){
     suppressWarnings(print(p + 
                              coord_fixed() +
-                             ggnewscale::new_scale_color() +
-                             geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
-                             scale_color_viridis_c() +
-                             geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
-                             geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
-                             coord_sf(datum = NA)  +
+                             # ggnewscale::new_scale_color() +
+                             # geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+                             # scale_color_viridis_c() +
+                             # geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+                             # geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+                             # coord_sf(datum = NA)  +
                              theme(axis.title = element_blank(),
                                    axis.text = element_blank(),
                                    legend.position = "none")))
   }else{
     suppressWarnings(print(p + 
                              coord_fixed() +
-                             ggnewscale::new_scale_color() +
-                             geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
-                             scale_color_viridis_c() +
-                             geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
-                             coord_sf(datum = NA)  +
+                             # ggnewscale::new_scale_color() +
+                             # geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+                             # scale_color_viridis_c() +
+                             # geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+                             # coord_sf(datum = NA)  +
                              theme(axis.title = element_blank(),
                                    axis.text = element_blank(),
                                    legend.position = "none")))
@@ -649,13 +649,51 @@ element_plot_legend <- data.frame(element = unique(xray_frame$element)) %>%
 
 ##element plot with density contours
 element_plot <- element_plotter(xray_frame, xray_brick, SEM_image, element_colors)
+SEM_plot <- rasterVis::gplot(SEM_image) +
+  geom_tile(aes(fill = value)) +
+  scale_fill_gradient(low = 'black', high = 'white') +
+  coord_fixed() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        legend.position = "none")
+density_plot <- rasterVis::gplot(SEM_image) +
+  geom_tile(aes(fill = value), alpha = 0.2) +
+  scale_fill_gradient(low = 'black', high = 'white') +
+  ggnewscale::new_scale_fill()
+
+if(!is.na(opt$biogenic) & length(biogenic) > 0){
+  density_plot <- density_plot + 
+    coord_fixed() +
+    ggnewscale::new_scale_color() +
+    geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+    scale_color_viridis_c() +
+    geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+    geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
+    coord_sf(datum = NA)  +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          legend.position = "none")
+}else{
+  density_plot <- density_plot + 
+    coord_fixed() +
+    ggnewscale::new_scale_color() +
+    geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
+    scale_color_viridis_c() +
+    geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
+    coord_sf(datum = NA)  +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          legend.position = "none")
+}
 
 element_plot_with_legend <- plot_grid(
+  SEM_plot,
+  density_plot,
   element_plot, 
   plot_grid(get_legend(element_plot_legend), 
             ncol = 1), 
-  nrow = 2, 
-  rel_heights = c(8,2)
+  nrow = 4, 
+  rel_heights = c(4, 4, 4, 2)
 )
 
 
