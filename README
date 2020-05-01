@@ -1,14 +1,14 @@
-#to run a single job with dataStitchR
+## to run a single job with dataStitchR
 
 Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataStitchR.R -f "xray_data" -b "xray_data/SEM_images" -c "coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|Os|SEM" -d "overview" -y "overview" --overview "overview.*tif" -p FALSE -n "D1T4exp"
 
-#to run a single job with dataClustR
+## to run a single job with dataClustR
 
 Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/DeMMO3/D3T20rep_Dec2019_Yates" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "D3T20rep" --base "SEM_pano.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
 
 
 
-#to run batch job for dataStitchR
+## to run batch job for dataStitchR
 
 cd /Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data
 
@@ -19,7 +19,7 @@ Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/sc
 done
 
 
-#to run batch job for dataClustR
+## to run batch job for dataClustR
 
 cd /Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data
 
