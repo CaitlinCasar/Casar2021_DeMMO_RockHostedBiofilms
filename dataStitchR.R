@@ -47,7 +47,7 @@ option_list = list(
   make_option(c("-z", "--z-format"), action="store", default="*", type='character',
               help="Optional regex pattern of x-ray image formats to select for stitching, i.e. '.tif'."),
   make_option(c("-t", "--overview"), action="store", default=NA, type='character',
-              help="Optional regex pattern of x-ray image name for large overview area, i.e. 'overview.*tif'."),
+              help="Optional regex pattern of x-ray or SEM image name for large overview area, i.e. 'overview.*tif'."),
   make_option(c("-m", "--make"), action="store", default="*", type='character',
               help="Optional regex pattern of SEM image formats to select for stitching, i.e. '.tif'. You do not need to specify this unless you are generating a PDF output."),
   make_option(c("-a", "--all-exclude"), action="store", default=NA, type='character',
@@ -101,11 +101,7 @@ for(j in 1:length(directories)){
     panorama <- list()
     for(i in 1:length(files)){
       message(paste0("Processing image ", i, " of ", length(files), "..."))
-      image <- files[i] %>% image_read() %>%
-        image_quantize(colorspace = 'gray') 
-      temp_file <- tempfile()
-      image_write(image, path = temp_file, format = 'tiff', depth = 16)
-      image_noThresh <- raster(temp_file)
+      image_noThresh <- raster(files[i])
       image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 0, 1, 0))
       image <- aggregate(image, fact=4)
       image_extent <- extent(matrix(c(xy$x[xy_id[i]], xy$x[xy_id[i]] + 1024, xy$y[xy_id[i]], xy$y[xy_id[i]]+704), nrow = 2, ncol = 2, byrow = T))
@@ -164,28 +160,27 @@ if(!is.na(opt$overview)){
   message("Stacking overview x-ray brick...")
   overview_brick_list <- list()
   overview_data <- list()
-  
+
   for(i in 1:length(directories)){
     path = directories[i]
     files <- list.files(path, full.names = T, pattern = opt$overview)
     if(length(files) >0){
       overview_data[[i]] <- str_extract(path, "([^/]+$)")
       message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
-      image <- files %>% image_read() %>% 
-        image_quantize(colorspace = 'gray')  
-      temp_file <- tempfile()
-      image_write(image, path = temp_file, format = 'tiff', depth = 16)
-      image_noThresh <- raster(temp_file) 
+      image_noThresh <- raster(files)
       image <- image_noThresh %>% setValues(if_else(values(image_noThresh) > 0, 1, 0))
       image <- aggregate(image, fact=4)
-      overview_brick_list[[i]] <- image
+      image_extent <- extent(matrix(c(0, 1024, 0, 704), nrow = 2, ncol = 2, byrow = T))
+      image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
+      values(image_raster) <- values(image)
+      overview_brick_list[[i]] <- image_raster
     }
   }
-  
+
   message("Stacking complete. Creating overview x-ray brick...")
   overview_brick <- do.call(brick, na.omit(overview_brick_list))
   names(overview_brick) <- unlist(overview_data)
-  
+
   message("...complete. Writing overview x-ray brick...")
   if(!is.na(opt$out)){
     dir.create(opt$out)
@@ -231,12 +226,7 @@ SEM_panorama <- list()
 
 message("Stitching SEM images into panorama...")
 for(i in 1:length(SEM_images)){
-  image <- SEM_images[i] %>% image_read() %>%
-    image_quantize(colorspace = 'gray') %>%
-    image_equalize()
-  temp_file <- tempfile()
-  image_write(image, path = temp_file, format = 'tiff')
-  image <- raster(temp_file)
+  image <- raster(SEM_images[i])
   image_extent <- extent(matrix(c(xy$x[i], xy$x[i] + 1024, xy$y[i], xy$y[i]+704), nrow = 2, ncol = 2, byrow = T))
   image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
   values(image_raster) <- values(image)
@@ -265,6 +255,44 @@ if(!is.na(opt$out)){
 
 
 message("...complete.")
+
+
+# create SEM overview raster ----------------------------------------------
+
+if(!is.na(opt$overview)){
+  if(!is.na(opt$b)){
+    SEM_images <- list.files(opt$b, full.names = T, pattern = opt$m)
+  }else{
+    message("Please provide a file path for your SEM images to stitch. For help, see 'dataStitchR.R --help.'")
+    break
+  }
+  message("Creating overview SEM raster image...")
+  SEM_images <- SEM_images[str_detect(SEM_images , opt$overview)]
+  image <- raster(SEM_images)
+  image_extent <- extent(matrix(c(0, 1024, 0, 704), nrow = 2, ncol = 2, byrow = T))
+  image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
+  values(image_raster) <- values(image)
+  SEM_image <- image_raster
+  
+  message("Writing overview SEM raster...")
+  
+  
+  if(!is.na(opt$out)){
+    if(!is.na(opt$n)){
+      writeRaster(SEM_image, paste0(opt$out, "/", opt$n,"_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
+    }else{
+      writeRaster(SEM_image, path = opt$out, "SEM_overview.tif", overwrite=TRUE, format = "GTiff")
+    }
+  }else{
+    if(!is.na(opt$n)){
+      writeRaster(SEM_image, paste0(opt$n, "_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
+    }else{
+      writeRaster(SEM_image, "SEM_overviewo.tif", overwrite=TRUE, format = "GTiff")
+    }
+  }
+}
+
+
 
 #flush everything we don't need from memory
 remove(list = c("SEM_panorama", "SEM_images", "image", "image_extent", "image_raster"))

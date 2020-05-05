@@ -15,6 +15,8 @@ option_list = list(
               help="Optional name for output files."),
   make_option(c("-b", "--base"), action="store", default=NA, type='character',
               help="Required file path for SEM panoramic tif from dataStitchR ouput."),
+  make_option(c("-j", "--overview_base"), action="store", default=NA, type='character',
+              help="Optional file path for overview SEM tif."),
   make_option(c("-c", "--cores"), action="store", default=1, type='numeric',
               help="Number of cores to use for parallel processing, default is 1."),
   make_option(c("-u", "--use-scale"), action="store", default=1, type='numeric',
@@ -41,7 +43,7 @@ opt = parse_args(OptionParser(option_list=option_list))
 
 
 #load dependencies
-pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, units, raster, rgeos, imager, ggnewscale,  cowplot, tidyverse, rgdal, rasterVis, magick)
+pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, units, raster, rgeos, imager, ggnewscale,  cowplot, tidyverse, rgdal, rasterVis)
 #removed fasterRaster, lwgeom,stars,
 
 # import the data ---------------------------------------------------------
@@ -56,7 +58,11 @@ if(!is.na(opt$overview)){
   message("importing overview brick")
   overview_brick <- brick(files[str_detect(files, opt$overview)])
 }
-message("importing SEM pano")
+if(!is.na(opt$overview_base)){
+  message("importing overview base SEM image")
+  overview_SEM_image <- raster(files[str_detect(files, opt$overview_base)])
+}
+message("importing SEM pano image")
 #load base SEM image
 SEM_image <- raster(files[str_detect(files, opt$base)])
 
@@ -126,16 +132,12 @@ write_data <- function(data, file_name){
 # rasterize/polygonize cells and biogenic features ------------------------
 
 #function for rasterizing or polygonizing
-image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE, equalizer = TRUE){
-  if(equalizer == T){
+image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop_and_fill = TRUE, polygonize = TRUE){
     message("reading image...")
-    image <- image_path %>% image_read() %>% image_quantize(colorspace = 'gray')
-    image
+    image <- image_path 
     if(to_raster == T){
       message("rasterizing...")
-      temp_file <- tempfile()
-      image_write(image, path = temp_file, format = 'tiff')
-      image_raster_noThresh <- raster(temp_file) 
+      image_raster_noThresh <- raster(image) 
       image_raster <- image_raster_noThresh %>% setValues(if_else(values(image_raster_noThresh) > 0, 1, 0))
       image_raster 
       if(polygonize == TRUE){
@@ -161,9 +163,6 @@ image_to_polygon <- function(image_path, to_raster = TRUE, pres_abs = TRUE, drop
     }else{
       image
     }
-  }else{
-    image_read(image_path)
-  }
 }
 
 message("transforming cell data...")
@@ -608,31 +607,11 @@ element_plotter<-function(coord_frame, brick, SEM_image, colors, density=TRUE){
       ggnewscale::new_scale_fill()
   }
   message("Writing element plot...")
-  if(!is.na(opt$biogenic) & length(biogenic) > 0){
-    suppressWarnings(print(p + 
-                             coord_fixed() +
-                             # ggnewscale::new_scale_color() +
-                             # geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
-                             # scale_color_viridis_c() +
-                             # geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
-                             # geom_sf(data = biogenic_polygon, inherit.aes = F, fill = "cyan", lwd = 0) +
-                             # coord_sf(datum = NA)  +
-                             theme(axis.title = element_blank(),
-                                   axis.text = element_blank(),
-                                   legend.position = "none")))
-  }else{
-    suppressWarnings(print(p + 
-                             coord_fixed() +
-                             # ggnewscale::new_scale_color() +
-                             # geom_density_2d(data=cell_centroids_coords, inherit.aes = F, mapping = aes(X, Y, col = stat(level)/max(stat(level)))) +
-                             # scale_color_viridis_c() +
-                             # geom_sf(data = cells_polygon, inherit.aes = F, fill = "#39ff14", lwd = 0) +
-                             # coord_sf(datum = NA)  +
-                             theme(axis.title = element_blank(),
-                                   axis.text = element_blank(),
-                                   legend.position = "none")))
-  }
-  
+    p + 
+      coord_fixed() +
+      theme(axis.title = element_blank(),
+            axis.text = element_blank(),
+            legend.position = "none")
 }
 
 element_plot_legend <- data.frame(element = unique(xray_frame$element)) %>%
@@ -702,6 +681,44 @@ plot_PDF(element_plot_with_legend, "density_contour_with_elements")
 
 }
 
+# element overview plot ---------------------------------------------------
+
+if(!is.na(opt$overview) & !is.na(opt$overview_base)){
+  message("geerating overview element plot...")
+  overview_xray_frame <- as.data.frame(overview_brick, xy=TRUE) 
+  overview_xray_frame <- gather(overview_xray_frame, element, value, colnames(overview_xray_frame)[3]:colnames(overview_xray_frame)[ncol(overview_xray_frame)])
+
+  element_plot <- element_plotter(overview_xray_frame, overview_brick, overview_SEM_image, element_colors)
+  SEM_plot <- rasterVis::gplot(overview_SEM_image) +
+    geom_tile(aes(fill = value)) +
+    scale_fill_gradient(low = 'black', high = 'white') +
+    coord_fixed() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          legend.position = "none")
+  element_plot_legend <- data.frame(element = unique(overview_xray_frame$element)) %>%
+    rownames_to_column() %>% 
+    ggplot(aes(element, rowname, fill=element)) + 
+    geom_bar(stat= "identity") + 
+    scale_fill_manual(values = element_colors) +
+    guides(fill=guide_legend(nrow=2)) +
+    theme(legend.title = ggplot2::element_blank(),
+          legend.text = ggplot2::element_text(size = 8))
+  
+  element_plot_with_legend <- plot_grid(
+    SEM_plot,
+    element_plot, 
+    plot_grid(get_legend(element_plot_legend), 
+              ncol = 1), 
+    nrow = 3, 
+    rel_heights = c(4, 4, 2)
+  )
+  
+  
+  #generatePDF
+  plot_PDF(element_plot_with_legend, "overview_with_elements")
+  
+}
 # quadrat plot ------------------------------------------------------------
 message("Generating quadrat plot...")
 

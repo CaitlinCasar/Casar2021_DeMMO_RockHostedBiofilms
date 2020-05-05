@@ -10,33 +10,77 @@ otu_table <- read_delim("../../data/DeMMO_NativeRock_noChimera_otuTable_withTaxa
 
 
 # load summary report data 
-directories <- list.dirs("../../data", full.names = T , recursive =T)
+directories <- list.dirs("/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/", full.names = T , recursive =T)
 directories <- directories[str_detect(directories, "reports")]
 files <- list.files(directories, full.names = T)
 
 
 elements = tibble::tibble(File = files[str_detect(files, "element_summary")]) %>%
-  tidyr::extract(File, "sample", "(?<=/reports/)(.*)(?=_element_summary[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_element_summary[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
-  select(-File)  %>%
-  left_join(metadata %>% select(sample, sample_id))
+  dplyr::select(-File)  %>%
+  left_join(metadata %>% dplyr::select(sample, sample_id))
 
 cells = tibble::tibble(File = files[str_detect(files, "cell_summary")]) %>%
-  tidyr::extract(File, "sample", "(?<=/reports/)(.*)(?=_cell_summary[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_cell_summary[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   select(-File) %>%
   left_join(metadata)
 
 models = tibble::tibble(File = files[str_detect(files, "models.csv")]) %>%
-  tidyr::extract(File, "sample", "(?<=/reports/)(.*)(?=_cell_distribution_models[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_cell_distribution_models[.]csv)", remove = FALSE) %>%
+  mutate(Data = lapply(File, readr::read_csv)) %>%
+  tidyr::unnest(Data) %>%
+  select(-File) %>%
+  left_join(metadata)
+
+total_corr = tibble::tibble(File = files[str_detect(files, "total_correlation.csv")]) %>%
+  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_total_correlation[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   select(-File) %>%
   left_join(metadata)
 
 
+
+
+# cell stats --------------------------------------------------------------
+cell_stats <- cells %>%
+  ggplot(aes(substrate, value, shape = experiment_type, color = site)) +
+  geom_point() +
+  facet_wrap(~observation, scales = "free")
+
+
+ann_vs_density <- cells %>%
+  spread(observation, value, fill = 0) %>%
+  ggplot(aes(`cell ANN`, `cell density (cells/cm^2)`, shape = substrate, color = site, label = coupon_id)) +
+  geom_point()
+
+#plot shows exponential relationship between density and ANN - first order control on "clustering" is density
+plotly::ggplotly(ann_vs_density)
+
+
+cells_vs_biogenic <- cells %>%
+  spread(observation, value, fill = 0) %>%
+  ggplot(aes(`coverage cell area (%)`, `coverage biogenic area (%)`, shape = substrate, color = site, label = coupon_id)) +
+  geom_point()
+
+plotly::ggplotly(cells_vs_biogenic)
+
+
+# total correlation -------------------------------------------------------
+
+total_corr_plot <- total_corr %>%
+  gather(corr_type, corr_val, c(cell_cor,biogenic_cor)) %>%
+  ggplot(aes(element, corr_val)) +
+  geom_boxplot(aes(group = element)) +
+  geom_point(aes(color =site, shape = substrate, label = coupon_id)) +
+  coord_flip() +
+  facet_wrap(~corr_type)
+
+plotly::ggplotly(total_corr_plot)
 
 # element color palette ---------------------------------------------------
 # Set color palette

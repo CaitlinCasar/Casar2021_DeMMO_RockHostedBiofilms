@@ -14,7 +14,7 @@ Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/sc
 ### Run a single job with dataClustR
 
 ```bash
-Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/DeMMO3/D3T20rep_Dec2019_Yates" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "D3T20rep" --base "SEM_pano.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
+Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/DeMMO3/D3T20rep_Dec2019_Yates" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "D3T20rep" --base "SEM_pano.tif" --overview_base "SEM_overview.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
 ```
 
 
@@ -38,7 +38,7 @@ cd /Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data
 for dir in `find $(pwd) -name '*Dec2019*'`; 
 do sampleID="`basename $dir | cut -f1 -d'_'`";
 cd $dir;
-Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "$dir" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "$sampleID" --base "SEM_pano.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
+Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "$dir" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "$sampleID" --base "SEM_pano.tif" --overview_base "SEM_overview.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
 done
 ```
 
