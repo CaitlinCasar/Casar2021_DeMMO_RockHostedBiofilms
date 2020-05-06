@@ -381,7 +381,7 @@ cell_element_corr <- lapply(element_raster_list, cell_element_corr_fun)
 
 #stack rasters
 cell_element_corr_stack <- stack(cell_element_corr)
-names(cell_element_corr_stack) <- element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()
+names(cell_element_corr_stack) <- names(xray_brick)[sig_elements]
 
 #create custom themes for levelplot
 zeroCol <- NA

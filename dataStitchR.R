@@ -95,8 +95,8 @@ for(j in 1:length(directories)){
     files <- files[!str_detect(files, opt$d)]
   }
   if(length(files) >0){
-    xray_data[[j]] <- str_extract(path, "([^/]+$)")
-    message(paste0("Stitching ",xray_data[[j]], " data (element ", j, " of ", length(directories), ")..."))
+    xray_data[j] <- str_extract(path, "([^/]+$)")
+    message(paste0("Stitching ",xray_data[j], " data (element ", j, " of ", length(directories), ")..."))
     xy_id <- which(positions[[1]] %in% regmatches(files, regexpr(opt$u, files, perl=TRUE)))
     panorama <- list()
     for(i in 1:length(files)){
@@ -126,7 +126,7 @@ for(j in 1:length(directories)){
 
 message("Stitching complete. Creating transect x-ray brick...")
 xray_brick <- do.call(brick, xray_brick_list)
-names(xray_brick) <- unlist(xray_data)
+names(xray_brick) <- xray_data
 message("...complete.")
 
 

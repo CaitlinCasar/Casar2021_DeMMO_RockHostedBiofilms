@@ -20,7 +20,7 @@ elements = tibble::tibble(File = files[str_detect(files, "element_summary")]) %>
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File)  %>%
-  left_join(metadata %>% dplyr::select(sample, sample_id))
+  left_join(metadata %>% dplyr::select(coupon_id, sample_id))
 
 cells = tibble::tibble(File = files[str_detect(files, "cell_summary")]) %>%
   tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_cell_summary[.]csv)", remove = FALSE) %>%
