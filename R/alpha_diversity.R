@@ -2,10 +2,10 @@
 pacman::p_load(tidyverse, readr, plyr, plotly, lubridate)
 
 #load metadata
-metadata <- read_csv("../data/metadata.csv") 
+metadata <- read_csv("../../../data/metadata.csv") 
 
 # load collated alpha div data
-data_path <- "../data/collated_alpha"   # path to the data
+data_path <- "../../../data/collated_alpha"   # path to the data
 files <- dir(data_path, pattern = "*.txt") # get file names
 files <- paste(data_path, '/', files, sep="")
 
@@ -32,9 +32,9 @@ alpha_plot <- alpha_div %>%
 
 rarefied_alpha_plot <- alpha_div %>%
   filter(`sequences per sample` == 46500 & method == "observed_otus" & !is.na(site)) %>%
-  ggplot(aes(substrate, value, color=substrate, group = substrate)) + 
-  geom_line(size = 2) +
-  stat_summary(fun.y=mean, geom="point", size=1, color="white") +
+  ggplot(aes(reorder(substrate, value), value, color=substrate, group = substrate)) + 
+  geom_line(size = 4) +
+  stat_summary(fun.y=mean, geom="point", size=1, color="#262626") +
   coord_flip() +
   theme(legend.position = "none", 
         axis.title = element_blank()) +

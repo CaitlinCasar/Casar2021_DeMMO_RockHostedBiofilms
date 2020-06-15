@@ -1,11 +1,12 @@
 #load dependencies 
-pacman::p_load(tidyverse, readr, plyr, plotly, lubridate, Hmisc, vegan)
+pacman::p_load(tidyverse, readr, plyr, plotly, lubridate, Hmisc, vegan, heatmaply, htmltools, raster)
 
 #load otu table and metadata
-metadata <- read_csv("../../data/metadata.csv") 
-otu_table <- read_delim("../../data/DeMMO_NativeRock_noChimera_otuTable_withTaxa_46822.txt", delim = '\t', comment = "# ")
-xrf <- read_csv("../../data/XRF.csv")
-fluid_geochem <- read_csv("../../data/site_geochem.csv") %>%
+
+metadata <- read_csv("../../../data/metadata.csv") 
+otu_table <- read_delim("../../../data/DeMMO_NativeRock_noChimera_otuTable_withTaxa_46822.txt", delim = '\t', comment = "# ")
+#xrf <- read_csv("../../../data/XRF.csv")
+fluid_geochem <- read_csv("../../../data/site_geochem.csv") %>%
   mutate(sulfide = sulfide/1000) %>%
   gather(substrate, abundance, methane:DOC) %>%
   group_by(Site, substrate) %>%
@@ -32,46 +33,52 @@ otu_norm <- otu_table %>%
 
 
 # load summary report data 
-directories <- list.dirs("/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/", full.names = T , recursive =T)
-directories <- directories[str_detect(directories, "reports")]
+directories <- list.dirs("../../../data", full.names = T , recursive =T)
+directories <- directories[str_detect(directories, "DeMMO1|DeMMO3")]
 files <- list.files(directories, full.names = T)
 
 
 elements = tibble::tibble(File = files[str_detect(files, "element_summary")]) %>%
-  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_element_summary[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=Dec2019/)(.*)(?=_element_summary[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File)  
 
 cells = tibble::tibble(File = files[str_detect(files, "cell_summary")]) %>%
-  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_cell_summary[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=Dec2019/)(.*)(?=_cell_summary[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File) 
 
 models = tibble::tibble(File = files[str_detect(files, "models.csv")]) %>%
-  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_cell_distribution_models[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=Dec2019/)(.*)(?=_cell_distribution_models[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File) 
 
 total_corr = tibble::tibble(File = files[str_detect(files, "total_correlation.csv")]) %>%
-  tidyr::extract(File, "coupon_id", "(?<=/reports/)(.*)(?=_total_correlation[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "coupon_id", "(?<=Dec2019/)(.*)(?=_total_correlation[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, readr::read_csv)) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File) 
+
+
+
+# bulk element composition from 70X scans ---------------------------------
 
 
 
 
 # cell stats --------------------------------------------------------------
 cell_stats <- cells %>%
+  left_join(metadata %>% dplyr::select(coupon_id, substrate, experiment_type, site)) %>%
   ggplot(aes(substrate, value, shape = experiment_type, color = site)) +
   geom_point() +
   facet_wrap(~observation, scales = "free")
 
 
 ann_vs_density <- cells %>%
+  left_join(metadata %>% dplyr::select(coupon_id, substrate, experiment_type, site)) %>%
   spread(observation, value, fill = 0) %>%
   ggplot(aes(`cell ANN`, `cell density (cells/cm^2)`, shape = substrate, color = site, label = coupon_id)) +
   geom_point()
@@ -81,37 +88,129 @@ plotly::ggplotly(ann_vs_density)
 
 
 cells_vs_biogenic <- cells %>%
+  left_join(metadata %>% dplyr::select(coupon_id, substrate, experiment_type, site)) %>%
   spread(observation, value, fill = 0) %>%
   ggplot(aes(`coverage cell area (%)`, `coverage biogenic area (%)`, shape = substrate, color = site, label = coupon_id)) +
   geom_point()
 
 plotly::ggplotly(cells_vs_biogenic)
 
+ann_vs_sim <- cells %>%
+  left_join(metadata %>% dplyr::select(coupon_id, substrate, experiment_type, site)) %>%
+  spread(observation, value, fill = 0) %>%
+  mutate(ann_dif = `cell ANN` - `mean random ANN`) %>%
+  ggplot(aes(ann_dif, `cell density (cells/cm^2)`, shape = substrate, color = site, label = coupon_id)) +
+  geom_point()
 
+ann_data <- read_csv("../../../data/ann_pvals.csv") %>%
+  left_join(metadata) %>%
+  left_join(cells) %>%
+  filter(!is.na(observation)) %>%
+  pivot_wider(names_from = observation, values_from = value, values_fill = list(value=0)) %>%
+  ggplot(aes(ANN_pval, `cell density (cells/cm^2)`, shape = substrate, color = site, label = coupon_id)) +
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "gray") +
+  theme(legend.position = "none") +
+  geom_point()
+
+dens_vs_elements <- cells %>%
+  filter(observation == "cell density (cells/cm^2)") %>%
+  inner_join(elements %>% 
+               left_join(metadata %>% select(sample_id, coupon_id, site)) %>% 
+               select(-transect) %>% 
+               spread(element, overview)) %>%
+  filter(site == "D3") %>%
+  select(-sample_id, -observation, -site) %>%
+  rename(cell_dens = "value") %>%
+  mutate_all(~replace(., is.na(.), 0)) %>%
+  column_to_rownames("coupon_id") %>%
+  select_if(function(col) sum(col >0) > (0.3*length(col))) 
+
+res <- cor(dens_vs_elements)
+round(res, 2)
+
+#heatmaply(res[1, 2:ncol(res)])
+heatmaply(res)
+  
 
 # models ------------------------------------------------------------------
+selected_elements <- elements %>%
+  group_by(coupon_id) %>%
+  filter(transect >= 1) %>%
+  select(coupon_id, element, transect)
 
-model_plot <- models %>%
+selected_models <- models %>%
   mutate(n_elements = str_count(model, "[+]") + 1,
           model = str_extract(model, "(?<=ppm[(]cell_centroids_ppp ~ )(.*)(?<= [)])"),
-         model = str_remove(model, " [)]")) %>%
-  separate(model, c("a", "b", "c", "d", "e"),"[+]") %>%
+         model = str_remove(model, " [)]"),
+         model_vars = model) 
+         #model_elements = if_else(str_detect(model, "[+]"), as.list(strsplit(model, "[+]")), list(model)[[id]])) %>%
+selected_models <- selected_models %>%  
+  separate(model_vars, letters[1:max(na.omit(selected_models$n_elements))],"[+]") %>%
+  gather(elem_id, element, a:e, na.rm = T) %>% 
+  full_join(selected_elements, by = c("coupon_id", "element")) %>%
+  group_by(coupon_id, model) %>%
+  filter(!any(is.na(transect))) %>%
+  select(coupon_id, model, pval, n_elements) %>%
+  distinct() %>%
+  mutate(model_vars = model) 
+
+max_elements <- max(na.omit(selected_models$n_elements))
+
+selected_models <- selected_models %>%  
+  separate(model_vars, letters[1:max_elements],"[+]") %>%
   group_by(coupon_id) %>%
+  #filter_if(na.omit(vars(a:e)), any_vars(!. %in% unlist(element))) %>%
   filter(pval == min(na.omit(pval))) %>%
   filter(n_elements == min(n_elements)) %>%
   left_join(cells %>% filter(observation == "cell density (cells/cm^2)") %>% dplyr::select(coupon_id, value)) %>%
   rename(cell_dens_sq_cm = "value") %>%
-  left_join(metadata) %>%
-  gather(elem_id, element, a:e) %>%
+  left_join(metadata) 
+
+model_plot <- selected_models %>%
+  gather(elem_id, element, a:tail(letters[1:max_elements], n=1)) %>%
   filter(!is.na(element)) %>%
   group_by(site, element) %>%
   summarise(freq = n()) %>%
-  ggplot(aes(reorder(element, freq), freq)) + 
+  ggplot(aes(reorder(element, freq), freq, fill=element)) + 
+  scale_fill_manual(values = element_colors) +
   geom_bar(stat = "identity") +
   coord_flip() + 
-  facet_wrap(~site)
+  theme(axis.title.y =  element_blank()) +
+  theme(legend.position = "none") +
+  facet_wrap(~site) 
+  
+model_plot <- plotly::ggplotly(model_plot)
 
-plotly::ggplotly(model_plot)
+model_pval_vs_dens <- selected_models %>%
+  ggplot(aes(pval, cell_dens_sq_cm, color = site, shape = substrate)) +
+  geom_point() +
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "gray") +
+  theme(legend.position = "none")
+
+model_pval_vs_dens <- plotly::ggplotly(model_pval_vs_dens)
+
+model_table <- selected_models %>% 
+  select(site, substrate, model, pval, n_elements, cell_dens_sq_cm, coupon_id, experiment_type) %>%
+  DT::datatable(options = list(lengthMenu = c(5, 10, 20), pageLength = 5))
+
+
+browsable(
+  tagList(list(
+    tags$div(
+      style = 'width:66%;display:block;float:left;',
+      model_plot
+    ),
+    tags$div(
+      style = 'width:34%;display:block;float:left;',
+      model_pval_vs_dens
+    ),
+    tags$div(
+      style = 'width:100%;display:block;float:left;',
+      model_table
+    )
+  ))
+)
+
 # total correlation -------------------------------------------------------
 
 total_corr_plot <- total_corr %>%
@@ -194,9 +293,10 @@ taxa_selector <- function(taxa_level, cutoff){
 n_fam <- taxa_selector("family", 1) %>%
   inner_join(elements %>% select(coupon_id) %>% left_join(metadata %>% select(sample_id, coupon_id, site))) %>%
   ungroup() %>%
-  #filter(site == "D1") %>%
+  filter(site == "D1") %>%
   select(-sample_id, -coupon_id, -site) %>%
-  select_if(negate(function(col) is.numeric(col) && sum(col) == 0)) %>%
+  #select_if(negate(function(col) is.numeric(col) && sum(col) == 0)) %>%
+  select_if(function(col) sum(col >0) > (0.3*length(col))) %>%
   ncol()
 
 fam_abundance_table <- taxa_selector("family", 1) %>%
@@ -206,9 +306,10 @@ fam_abundance_table <- taxa_selector("family", 1) %>%
                spread(element, overview)) %>%
   mutate_all(~replace(., is.na(.), 0)) %>%
   column_to_rownames("coupon_id") %>%
-  #filter(site == "D1") %>%
+  filter(site == "D1") %>%
   select(-sample_id, -site) %>%
-  select_if(negate(function(col) is.numeric(col) && sum(col) == 0))
+  #select_if(negate(function(col) is.numeric(col) && sum(col) == 0)) %>%
+  select_if(function(col) sum(col >0) > (0.3*length(col))) #select variables present in threshold percent of samples 
 
 res <- cor(fam_abundance_table)
 round(res, 2)

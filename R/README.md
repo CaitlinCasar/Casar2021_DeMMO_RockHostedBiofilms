@@ -8,13 +8,13 @@
 ### Run a single job with dataStitchR
 
 ```bash
-Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataStitchR.R -f "xray_data" -b "xray_data/SEM_images" -c "coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|Os|SEM" -d "overview" -y "overview" --overview "overview.*tif" -p FALSE -n "D1T4exp"
+Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataStitchR.R -f "xray_data" -b "xray_data/SEM_images" -c "coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|Os|SEM" -d "overview" -y "overview" --overview "overview.*tif" -p FALSE -n "D3T15rep"
 ```
 
 ### Run a single job with dataClustR
 
 ```bash
-Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/DeMMO3/D3T20rep_Dec2019_Yates" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "D3T20rep" --base "SEM_pano.tif" --overview_base "SEM_overview.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
+Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataClustR.R -f "/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/DeMMO3/D3T19rep_Dec2019_Yates" --transect "transect.*grd" --overview "overview.*grd" --out "reports" -n "D3T19rep" --base "SEM_pano.tif" --overview_base "SEM_overview.tif" -u 4.2 --cores 3 --model_vars 5 --cells "cells.tif" --biogenic "biogenic.tif" -p TRUE
 ```
 
 
@@ -26,7 +26,7 @@ cd /Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data
 for dir in `find $(pwd) -name 'xray_data'`; 
 do sampleID="`basename $(dirname $dir) | cut -f1 -d'_'`";
 cd $dir/..;
-Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/scipts/dataStitchR.R -f "$dir" -b "$dir/SEM_images" -c "$dir/../coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|SEM|Os" -d "overview" -y "overview" --overview "overview.*tif" -p FALSE -n "$sampleID"; 
+Rscript /Users/Caitlin/Desktop/DeMMO_Pubs/DeMMO_NativeRock/DeMMO_NativeRock/R/submission/R/dataStitchR.R -f "$dir" -b "$dir/SEM_images" -c "$dir/../coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|SEM|Os" -d "overview" -y "overview" --overview "overview.*tif" -p FALSE -n "$sampleID"; 
 done
 ```
 
