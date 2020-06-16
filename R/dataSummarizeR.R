@@ -1,5 +1,5 @@
 #load dependencies 
-pacman::p_load(tidyverse, readr, plyr, plotly, lubridate, Hmisc, vegan, heatmaply, htmltools, raster)
+pacman::p_load(tidyverse, readr, plyr, plotly, lubridate, Hmisc, vegan, heatmaply, htmltools)
 
 #load otu table and metadata
 
@@ -65,7 +65,7 @@ total_corr = tibble::tibble(File = files[str_detect(files, "total_correlation.cs
 
 
 # bulk element composition from 70X scans ---------------------------------
-
+bulk_element_composition <- read_csv("../../../data/bulk_element_compositions.csv")
 
 
 
@@ -257,13 +257,6 @@ names(element_colors) <- c("H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F", 
 # otu vs element correlation ----------------------------------------------
 
 
-element_composition <- elements %>%
-  select(-transect) %>%
-  left_join(metadata %>% select(coupon_id, substrate)) %>%
-  group_by(substrate, element) %>%
-  summarise(mean_abundance = mean(na.omit(overview))) %>%
-  filter(!is.na(mean_abundance)) 
-
 taxa_selector <- function(taxa_level, cutoff){
   trim = "D_0__Bacteria; |D_0__Archaea; |D_1__|D_2__|D_3__|D_4__|D_5__|D_6__"
     otu_norm  %>% 
@@ -291,28 +284,29 @@ taxa_selector <- function(taxa_level, cutoff){
 }
 
 n_fam <- taxa_selector("family", 1) %>%
-  inner_join(elements %>% select(coupon_id) %>% left_join(metadata %>% select(sample_id, coupon_id, site))) %>%
   ungroup() %>%
-  filter(site == "D1") %>%
-  select(-sample_id, -coupon_id, -site) %>%
+  left_join(metadata %>% filter(!coupon_id == "D3T15rep") %>% dplyr::select(sample_id, substrate, site, coupon_id)) %>%
+  filter(site == "D3" & !substrate %in% c("fluid", "sand")) %>%
+  column_to_rownames("coupon_id") %>%
+  select(-sample_id, -site, -substrate) %>%
   #select_if(negate(function(col) is.numeric(col) && sum(col) == 0)) %>%
-  select_if(function(col) sum(col >0) > (0.3*length(col))) %>%
+  select_if(function(col) sum(col >0) > (0.5*length(col))) %>%
   ncol()
 
 fam_abundance_table <- taxa_selector("family", 1) %>%
-  inner_join(elements %>% 
-               left_join(metadata %>% select(sample_id, coupon_id, site)) %>% 
-               select(-transect) %>% 
-               spread(element, overview)) %>%
+  ungroup() %>%
+  left_join(metadata %>% filter(!coupon_id == "D3T15rep") %>% dplyr::select(sample_id, substrate, site, coupon_id)) %>%
+  inner_join(bulk_element_composition %>% dplyr::select(substrate, element, rel_abundance)) %>%
+  pivot_wider(names_from = element, values_from = rel_abundance) %>% 
   mutate_all(~replace(., is.na(.), 0)) %>%
   column_to_rownames("coupon_id") %>%
-  filter(site == "D1") %>%
-  select(-sample_id, -site) %>%
+  filter(site == "D3") %>%
+  select(-sample_id, -site, -substrate) %>%
   #select_if(negate(function(col) is.numeric(col) && sum(col) == 0)) %>%
-  select_if(function(col) sum(col >0) > (0.3*length(col))) #select variables present in threshold percent of samples 
+  select_if(function(col) sum(col >0) > (0.5*length(col))) #select variables present in threshold percent of samples 
 
 res <- cor(fam_abundance_table)
-round(res, 2)
+#round(res, 2)
 
 heatmaply(res[1:n_fam, (n_fam+1):ncol(res)], k_row = 3, k_col = 2)
 
@@ -335,37 +329,37 @@ heatmaply(res[1:n_fam, (n_fam+1):ncol(res)], k_row = 3, k_col = 2)
 
 # element composition -----------------------------------------------------
 
-xrf_plot <- xrf %>%
-  mutate(substrate = c("Homestake", "Ellison", "Poorman", "Yates")) %>%
-  gather(element, overview, Ti:Ca) %>%
-  select(substrate, element, overview) %>%
-  group_by(substrate, element) %>%
-  summarise(mean_abundance = (overview/1000000)*100) %>%
-  mutate(data = "xrf")
-
-transect_compositions <- elements %>%
-  left_join(metadata %>% select(coupon_id, substrate)) %>%
-  group_by(substrate, element) %>%
-  summarise(mean_abundance = mean(na.omit(transect))) %>%
-  filter(!is.na(mean_abundance)) %>%
-  mutate(data = "sem_transect")
-  
-element_composition <- elements %>%
-  left_join(metadata %>% select(coupon_id, substrate)) %>%
-  group_by(substrate, element) %>%
-  summarise(mean_abundance = mean(na.omit(overview))) %>%
-  filter(!is.na(mean_abundance)) %>%
-  mutate(data = "sem_overview") %>%
-  bind_rows(transect_compositions) %>%
-  bind_rows(xrf_plot) %>%
-  mutate(data = factor(data, levels = c("sem_transect", "sem_overview", "xrf"))) %>%
-  ggplot() +
-  geom_bar(aes(substrate, mean_abundance, fill = element), stat = "identity") +
-  scale_fill_manual(values = element_colors) +
-  coord_flip() +
-  facet_wrap(~data)
-
-plotly::ggplotly(element_composition)
+# xrf_plot <- xrf %>%
+#   mutate(substrate = c("Homestake", "Ellison", "Poorman", "Yates")) %>%
+#   gather(element, overview, Ti:Ca) %>%
+#   select(substrate, element, overview) %>%
+#   group_by(substrate, element) %>%
+#   summarise(mean_abundance = (overview/1000000)*100) %>%
+#   mutate(data = "xrf")
+# 
+# transect_compositions <- elements %>%
+#   left_join(metadata %>% select(coupon_id, substrate)) %>%
+#   group_by(substrate, element) %>%
+#   summarise(mean_abundance = mean(na.omit(transect))) %>%
+#   filter(!is.na(mean_abundance)) %>%
+#   mutate(data = "sem_transect")
+#   
+# element_composition <- elements %>%
+#   left_join(metadata %>% select(coupon_id, substrate)) %>%
+#   group_by(substrate, element) %>%
+#   summarise(mean_abundance = mean(na.omit(overview))) %>%
+#   filter(!is.na(mean_abundance)) %>%
+#   mutate(data = "sem_overview") %>%
+#   bind_rows(transect_compositions) %>%
+#   bind_rows(xrf_plot) %>%
+#   mutate(data = factor(data, levels = c("sem_transect", "sem_overview", "xrf"))) %>%
+#   ggplot() +
+#   geom_bar(aes(substrate, mean_abundance, fill = element), stat = "identity") +
+#   scale_fill_manual(values = element_colors) +
+#   coord_flip() +
+#   facet_wrap(~data)
+# 
+# plotly::ggplotly(element_composition)
 
 
 # rock element composition NMDS -------------------------------------------
