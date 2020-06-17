@@ -346,7 +346,7 @@ for(k in 1:length(names(xray_brick))){
 
 element_models <- list()
 for(i in 1:length(element_combos)){
-  element_models[[i]] <- as.formula(paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")"))
+  element_models[[i]] <-as.formula(paste("cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+")))
 }
 
 #initialize empty lists for storing model outputs
