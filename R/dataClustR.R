@@ -195,8 +195,8 @@ cell_centroids_coords <- cell_centroids %>%
   st_coordinates() %>%
   as.data.frame() 
 #create ppp for point pattern analysis in spatstat
-window <- owin(xrange = c(st_bbox(cell_centroids)$xmin, st_bbox(cell_centroids)$xmax),
-               yrange = c(st_bbox(cell_centroids)$ymin, st_bbox(cell_centroids)$ymax))
+window <- owin(xrange = c(st_bbox(xray_brick)$xmin, st_bbox(xray_brick)$xmax),
+               yrange = c(st_bbox(xray_brick)$ymin, st_bbox(xray_brick)$ymax))
 
 cell_centroids_ppp <- ppp(cell_centroids_coords$X, cell_centroids_coords$Y, window) %>%
   rescale(micron_scale, "μm")
@@ -243,10 +243,12 @@ cell_gest <- Gest(cell_centroids_ppp) %>%
   gather(type, value, theo:km) %>%
   mutate(test = "G function")
 
-ppm_all_plot <- cell_fest %>%
+ppm_all <- cell_fest %>%
   bind_rows(cell_kest) %>%
   bind_rows(cell_jest) %>%
-  bind_rows(cell_gest) %>%
+  bind_rows(cell_gest) 
+
+ppm_all_plot <- ppm_all %>%
   ggplot(aes(x = r)) +
   geom_line(aes(y = value, color = type)) +
   xlab(expression("Distance ("~mu~"m)")) +
@@ -256,6 +258,9 @@ ppm_all_plot <- cell_fest %>%
 # generate PDF 
 
 plot_PDF(ppm_all_plot, "ppm_models")
+
+#write data
+write_data(ppm_all, "ppm_models")
 
 
 # Calculate ANN -----------------------------------------------------------
@@ -341,27 +346,48 @@ for(k in 1:length(names(xray_brick))){
 
 element_models <- list()
 for(i in 1:length(element_combos)){
-  element_models[[i]] <- paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")")
+  element_models[[i]] <- as.formula(paste("ppm(cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+"), ")"))
 }
 
-element_prob_function <- function(element_model_list){
-  ppm1 <- eval(parse(text=(element_model_list)))
-  ppm0 <- ppm(cell_centroids_ppp ~ 1)
-  unlist(anova(ppm1,ppm0, test="LRT")[4])[2]
+#initialize empty lists for storing model outputs
+element_covariate_models <- list()
+element_model_results <- data.frame(model_ID = as.numeric(), model = as.character(), Npar=as.numeric(), name = as.character(), value = as.numeric()) 
+
+#create the null model for comparison
+ppm0 <- ppm(cell_centroids_ppp ~ 1) 
+
+for(i in 1:length(element_models)){
+  ppm1 <- ppm(element_models[[i]]) #create a model with covariates
+  anova_lrt <- tidy(anova(ppm0,ppm1, test="LRT")) %>% 
+    pivot_longer(cols = df:p.value, values_to = "value") %>%
+    mutate(model_ID = i, 
+           model = format(element_models[[i]]),
+           n_elements = str_count(model, "[+]") + 1)
+  element_model_results <- element_model_results %>%
+    bind_rows(anova_lrt)
+  element_covariate_models <- append(element_covariate_models, list(ppm1)) #store each model in the element_covariate_models list
 }
 
-#calculate probabilities in parallel using max # of detected cores 
-#note that MASS masks 'select' from tidyverse, 'area'amd 'select' from raster, amd 'area' from spatstat. Should be loaded before these packages or call these explicitely  
-element_probabilities <- mclapply(element_models, element_prob_function, mc.cores = opt$cores)
+#filter for only significant models based on anova results 
+significant_models <- element_model_results %>%
+  filter(!is.na(value)) %>%
+  pivot_wider(names_from = name, values_from=value) %>%
+  filter(p.value <= 0.05)
 
-#element_probabilities <- lapply(element_models, element_prob_function)
+#subset the full list of models for only the significant ones 
+#sig_model_data <- element_covariate_models[significant_models$model_ID]
 
-element_probs <- data.frame("pval" = unlist(element_probabilities)) %>%
-  mutate(model = unlist(element_models),
-         elements = element_combos) 
 
-#write data to csv
-element_probs %>% dplyr::select(-elements) %>% write_data("cell_distribution_models")
+best_model <- significant_models %>%
+  filter(Deviance == max(Deviance)) %>%
+  filter(p.value == min(p.value)) %>%
+  filter(n_elements == min(n_elements))
+
+best_model_data <- element_covariate_models[best_model$model_ID]
+
+saveRDS(best_model_data, file = paste0(opt$n,"_best_models.Rds"))
+
+write_data(significant_models, "significant_models")
 
 # plot Spearman local correlation over cells + elements from most --------
 message("Modeling local correlation between cells and rock elements...")
@@ -514,7 +540,8 @@ cell_summary <- cells_polygon_stats %>%
             data.frame(observation = "total cells", value = nrow(cells_polygon_stats)),
             data.frame(observation = "cell density (cells/cm^2)", value = nrow(cells_polygon_stats)/(transect_area/100000000)),
             data.frame(observation = "cell ANN", value = ann.p),
-            data.frame(observation = "mean random ANN", value = mean(ann.r)))
+            data.frame(observation = "mean random ANN", value = mean(ann.r)),
+            data.frame(observation = "pseudo p-value", value=p))
             
 if(!is.na(opt$biogenic) & length(biogenic) > 0){
   cell_summary <- cell_summary %>%
