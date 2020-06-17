@@ -389,9 +389,11 @@ saveRDS(best_model_data, file = paste0(opt$n,"_best_models.Rds"))
 
 write_data(significant_models, "significant_models")
 
+best_model_elements <- unlist(str_split(str_split(best_model$model, "~ ")[[1]][2], " [+] "))
+
 # plot Spearman local correlation over cells + elements from most --------
 message("Modeling local correlation between cells and rock elements...")
-sig_elements <- which( names(xray_brick) %in% (element_probs %>% filter(pval == min(na.omit(element_probs$pval))) %>% dplyr::select(elements) %>% unlist()))
+sig_elements <- which(names(xray_brick) %in% best_model_elements)
 
 element_raster_list <- list()
 for(i in 1:length(sig_elements)){
