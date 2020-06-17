@@ -332,7 +332,7 @@ message("Modeling cell distribution as a function of rock chemistry...")
 
 #generate list of all possible element combinations
 element_combos = list()
-for(element in 1:opt$model_vars){
+for(element in 1:length(names(xray_brick))){
   element_combos = append(element_combos, combn(names(xray_brick), element, simplify = F))
 }
 
