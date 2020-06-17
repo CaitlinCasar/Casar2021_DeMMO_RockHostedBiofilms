@@ -43,7 +43,7 @@ opt = parse_args(OptionParser(option_list=option_list))
 
 
 #load dependencies
-pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, units, raster, rgeos, imager, ggnewscale,  cowplot, tidyverse, rgdal, rasterVis)
+pacman::p_load(MASS, parallel, spatstat, geostatsp, maptools, cluster, stringr, smoothr, sf, units, raster, rgeos, imager, ggnewscale,  cowplot, tidyverse, rgdal, rasterVis, broom)
 #removed fasterRaster, lwgeom,stars,
 
 # import the data ---------------------------------------------------------
