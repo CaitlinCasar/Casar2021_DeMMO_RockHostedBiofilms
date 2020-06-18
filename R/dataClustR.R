@@ -346,27 +346,33 @@ for(k in 1:length(names(xray_brick))){
 
 element_models <- list()
 for(i in 1:length(element_combos)){
-  element_models[[i]] <-as.formula(paste("cell_centroids_ppp ~", paste(unlist(element_combos[i]), collapse = "+")))
+  element_models[[i]] <- paste(unlist(element_combos[i]), collapse = "+")
 }
 
 #initialize empty lists for storing model outputs
-element_covariate_models <- list()
 element_model_results <- data.frame(model_ID = as.numeric(), model = as.character(), Npar=as.numeric(), name = as.character(), value = as.numeric()) 
 
 #create the null model for comparison
 ppm0 <- ppm(cell_centroids_ppp ~ 1) 
 
-for(i in 1:length(element_models)){
-  ppm1 <- ppm(element_models[[i]]) #create a model with covariates
+model_ID = 1
+element_modeler <- function(model){
+  message(paste0("Modeling ", model, "..."))
+  ppm1 <- ppm(as.formula(paste("cell_centroids_ppp ~", model))) #create a model with covariates
   anova_lrt <- tidy(anova(ppm0,ppm1, test="LRT")) %>% 
     pivot_longer(cols = df:p.value, values_to = "value") %>%
-    mutate(model_ID = i, 
-           model = format(element_models[[i]]),
+    mutate(model_ID = model_ID, 
+           model = model,
            n_elements = str_count(model, "[+]") + 1)
-  element_model_results <- element_model_results %>%
-    bind_rows(anova_lrt)
+  assign("element_model_results", element_model_results %>%
+           bind_rows(anova_lrt), envir = .GlobalEnv)
+  assign("model_ID", model_ID + 1, envir = .GlobalEnv)
   element_covariate_models <- append(element_covariate_models, list(ppm1)) #store each model in the element_covariate_models list
 }
+
+#element_covariate_models <- lapply(element_models, element_modeler)
+element_covariate_models <- mclapply(element_models, element_modeler, mc.cores = opt$cores)
+
 
 #filter for only significant models based on anova results 
 significant_models <- element_model_results %>%
