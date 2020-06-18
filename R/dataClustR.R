@@ -370,8 +370,8 @@ element_modeler <- function(model){
   element_covariate_models <- append(element_covariate_models, list(ppm1)) #store each model in the element_covariate_models list
 }
 
-#element_covariate_models <- lapply(element_models, element_modeler)
-element_covariate_models <- mclapply(element_models, element_modeler, mc.cores = opt$cores)
+element_covariate_models <- lapply(element_models, element_modeler)
+#element_covariate_models <- mclapply(element_models, element_modeler, mc.cores = opt$cores)
 
 
 #filter for only significant models based on anova results 
@@ -395,7 +395,7 @@ saveRDS(best_model_data, file = paste0(opt$n,"_best_models.Rds"))
 
 write_data(significant_models, "significant_models")
 
-best_model_elements <- unlist(str_split(str_split(best_model$model, "~ ")[[1]][2], " [+] "))
+best_model_elements <- unlist(str_split(best_model$model, "[+]"))
 
 # plot Spearman local correlation over cells + elements from most --------
 message("Modeling local correlation between cells and rock elements...")
