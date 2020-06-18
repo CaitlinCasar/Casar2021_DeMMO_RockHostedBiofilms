@@ -350,6 +350,7 @@ for(i in 1:length(element_combos)){
 }
 
 #initialize empty lists for storing model outputs
+element_covariate_models <- list()
 element_model_results <- data.frame(model_ID = as.numeric(), model = as.character(), Npar=as.numeric(), name = as.character(), value = as.numeric()) 
 
 #create the null model for comparison
