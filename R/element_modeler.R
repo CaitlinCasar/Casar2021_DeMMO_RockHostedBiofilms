@@ -213,7 +213,7 @@ if(start_modeling){
   
   best_model_data <- element_covariate_models[best_model$model_ID]
   
-  saveRDS(best_model_data, file = paste0(samplename,"_best_models.Rds"))
+  saveRDS(best_model_data, file = paste0(outname, "/", samplename,"_best_models.Rds"))
   
   write_data(significant_models, "significant_models")
   
