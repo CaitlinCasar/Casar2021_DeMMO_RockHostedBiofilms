@@ -1,0 +1,2 @@
+"Label"	"Date and Time"	"Document"	"Source"	"Scale"	"Scale Units"	"Scale Factor"	"Count"	"Area"	"Perimeter"	"Circularity"	"Height"	"Width"	"Gray Value (Minimum)"	"Gray Value (Maximum)"	"Gray Value (Mean)"	"Gray Value (Median)"	"Integrated Density"	"Histogram"
+"Measurement 80"	"2021-01-06T11:47:47-06:00"	"composite.tif"	"Selection"	"Custom (22 pixel(s) = 1.0000 microns)"	"microns"	"22.000000"	"1"	"0.469008"	"6.417998"	"0.143084"	"1.727273"	"1.272727"	"197.000000"	"198.000000"	"197.973568"	"198.000000"	"44940.000000"	"Histogram-1.csv"
