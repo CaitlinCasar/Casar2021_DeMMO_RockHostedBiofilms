@@ -1,11 +1,12 @@
 pacman::p_load(tidyverse, ggridges, cowplot)
 
+metadata <- read_csv("../data/metadata.csv")
 
 image_sizes <- read_csv("../data/photoshop_data/image_sizes.csv") %>%
   mutate(width = width/22,
          height = height/22,
          transect_area = if_else(str_detect(coupon_id, "cont"), 5*width * height, width * height)) %>%
-  select(coupon_id, transect_area)
+  dplyr::select(coupon_id, transect_area)
 files <- list.files("../data/photoshop_data", full.names = T, pattern = ".txt")
 
 photoshop_stats = tibble::tibble(File = files) %>%
@@ -14,14 +15,14 @@ photoshop_stats = tibble::tibble(File = files) %>%
   tidyr::unnest(Data) %>%
   dplyr::select(-File) %>%
   filter(is.na(Count) | Count == 1) %>%
-  select(coupon_id, Area, Perimeter, Circularity, Height, Width) %>%
+  dplyr::select(coupon_id, Area, Perimeter, Circularity, Height, Width) %>%
   filter(!coupon_id == "D3T15exp") %>%
   mutate(type = if_else(str_detect(coupon_id, "fungal"), "fungal", "cell"),
          coupon_id = str_remove(coupon_id, "_fungal"),
          filament = if_else(Circularity <= 0.1, 1, 0),
          cocci = if_else(Circularity > 0.7, 1, 0),
          rod = if_else(Circularity <= 0.7 & Circularity > 0.1, 1, 0)) %>%
-  left_join(metadata %>% select(coupon_id, site, substrate)) 
+  left_join(metadata %>% dplyr::select(coupon_id, site, substrate)) 
 
 summarised_photoshop_stats = photoshop_stats %>%
   group_by(coupon_id, type) %>%
@@ -74,3 +75,5 @@ cell_stats_table <- summarised_photoshop_stats %>%
 
 plot_grid(cell_size_plot, cell_stats_table, nrow=1, align="h", rel_widths = c(3,1.5))
 
+
+#write_delim(photoshop_stats, "../figures/SuppFile1.txt", delim = "\t")
