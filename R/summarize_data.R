@@ -98,8 +98,8 @@ res <- cor(fam_abundance_table)
 
 #write_csv(data.frame(res[1:n_fam, (n_fam+1):ncol(res)]) %>% rownames_to_column("taxa"), "../data/", site_name, "_taxa_corr.csv")
 
-# heatmaply(res[1:n_fam, (n_fam+1):ncol(res)], k_row = 3, k_col = 2, file = paste0("../manuscript_drafts/", site_name, "_heatmaply_plot.png"))
-# }
+heatmaply(res[1:n_fam, (n_fam+1):ncol(res)], k_row = 3, k_col = 2, file = paste0("../data/", site_name, "_heatmaply_plot.png"))
+}
 
 
-plotly::subplot(heatmapper("D1"), heatmapper("D3"), nrows = 1, margin = 0.15) 
+plotly::subplot(heatmapper("D1"), heatmapper("D3"), nrows = 1, margin = 0.15)
