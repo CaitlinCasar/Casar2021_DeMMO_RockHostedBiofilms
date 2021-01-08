@@ -1,44 +1,19 @@
-#!/usr/bin/env Rscript
-
-#Caitlin Casar
-#github.com/caitlincasar
-#19 March 2020
-#DataStitchR stitches panoramic images of SEM images coupled to x-ray energy dispersive spectroscopy.
-
-# usage: ./dataStitchR. -f "/Users/Caitlin/Desktop/dataStitcher/example_dataset" -b "/Users/Caitlin/Desktop/dataStitcher/example_dataset/SEM_images" -c "/Users/Caitlin/Desktop/dataStitcher/coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|Os|SEM" -d "overview" -y "overview" -p TRUE -o "example" -n "example"
-# usage Rscript dataStitchR.R -f "/Users/Caitlin/Desktop/dataStitcher/example_dataset" -b "/Users/Caitlin/Desktop/dataStitcher/example_dataset/SEM_images" -c "/Users/Caitlin/Desktop/dataStitcher/coordinates.txt" -z ".tif" -m ".tif" -a "Unknown|Os|SEM" -d "overview" -y "overview" -p TRUE -o "example" -n "example"
-
-message("
-                                        #####                                    ######  
-        #####     ##    #####    ##    #     #  #####  #  #####   ####   #    #  #     # 
-        #    #   #  #     #     #  #   #          #    #    #    #    #  #    #  #     # 
-        #    #  #    #    #    #    #   #####     #    #    #    #       ######  ######  
-        #    #  ######    #    ######        #    #    #    #    #       #    #  #   #   
-        #    #  #    #    #    #    #  #     #    #    #    #    #    #  #    #  #    #  
-        #####   #    #    #    #    #   #####     #    #    #     ####   #    #  #     # 
-        
-
-        ")
-
-
-
-#load dependencies 
-suppressPackageStartupMessages(require(pacman))
+#load dependencies
 pacman::p_load(raster, magick, tidyverse, rasterVis, ggnewscale, Hmisc, cowplot)
 
 #create list all sub-directories within main directory
-directories <- list.dirs(opt$f, full.names = T , recursive =F)
-if(!is.na(opt$a)){
-  directories <- directories[!str_detect(directories, opt$a)]
-}
+directories <- list.dirs(filename, full.names = T , recursive =F)
+
+directories <- directories[!str_detect(directories, "Unknown|SEM|Os")]
+
 
 
 #set image coordinates
-xy <- read_delim(opt$c, delim = "\t", col_types = cols())
+xy <- read_delim(paste0(filename, "../coordinates.txt"), delim = "\t", col_types = cols())
 positions <- xy %>%
   select(-x, -y)
 
-message(paste0("Importing data from ", opt$n, "..."))
+message(paste0("Importing data from ", samplename, "..."))
 
 # stitch xray images ------------------------------------------------------
 
@@ -47,14 +22,12 @@ xray_brick_list <- list()
 xray_data <- list()
 for(j in 1:length(directories)){
   path = directories[j]
-  files <- list.files(path, full.names = T, pattern = opt$z)
-  if(!is.na(opt$d)){
-    files <- files[!str_detect(files, opt$d)]
-  }
+  files <- list.files(path, full.names = T, pattern = ".tif")
+  files <- files[!str_detect(files, "overview")]
   if(length(files) >0){
     xray_data[j] <- str_extract(path, "([^/]+$)")
     message(paste0("Stitching ",xray_data[j], " data (element ", j, " of ", length(directories), ")..."))
-    xy_id <- which(positions[[1]] %in% regmatches(files, regexpr(opt$u, files, perl=TRUE)))
+    xy_id <- which(positions[[1]] %in% regmatches(files, regexpr("pos.*?\\K-?\\d+", files, perl=TRUE)))
     panorama <- list()
     for(i in 1:length(files)){
       message(paste0("Processing image ", i, " of ", length(files), "..."))
@@ -66,7 +39,7 @@ for(j in 1:length(directories)){
       values(image_raster) <- values(image)
       panorama[[xy_id[i]]] <- image_raster
     }
-      empty_xy_id <- which(!positions[[1]] %in% regmatches(files, regexpr(opt$u, files, perl=TRUE)))
+      empty_xy_id <- which(!positions[[1]] %in% regmatches(files, regexpr("pos.*?\\K-?\\d+", files, perl=TRUE)))
       if(length(empty_xy_id) > 0){
         for(k in 1:length(empty_xy_id)){
           message(paste0("creating empty raster for missing position: ", empty_xy_id[[k]]))
@@ -91,19 +64,19 @@ message("...complete.")
 message("Writing transect x-ray brick...")
 
 
-if(!is.na(opt$out)){
-  dir.create(opt$out)
-  if(!is.na(opt$n)){
-    out_brick <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_transect_brick.grd"), overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, paste0(opt$out, "/", opt$n,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+if(!is.na(outname)){
+  dir.create(outname)
+  if(!is.na(samplename)){
+    out_brick <- writeRaster(xray_brick, paste0(outname, "/", samplename,"_transect_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(outname, "/", samplename,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }else{
-    out_brick <- writeRaster(xray_brick, path = opt$out, "transect_brick.grd", overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, path = opt$out, "transect_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    out_brick <- writeRaster(xray_brick, path = outname, "transect_brick.grd", overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, path = outname, "transect_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }
 }else{
-  if(!is.na(opt$n)){
-    out_brick <- writeRaster(xray_brick, paste0(opt$n,"_transect_brick.grd"), overwrite=TRUE, format="raster")
-    x <- writeRaster(xray_brick, paste0(opt$n,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  if(!is.na(samplename)){
+    out_brick <- writeRaster(xray_brick, paste0(samplename,"_transect_brick.grd"), overwrite=TRUE, format="raster")
+    x <- writeRaster(xray_brick, paste0(samplename,"_transect_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
   }else{
     out_brick <- writeRaster(xray_brick, "transect_brick.grd", overwrite=TRUE, format="raster")
     x <- writeRaster(xray_brick, "transect_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
@@ -113,14 +86,14 @@ if(!is.na(opt$out)){
 
 message("...complete.")
 
-if(!is.na(opt$overview)){
+if(stitch_overview){
   message("Stacking overview x-ray brick...")
   overview_brick_list <- list()
   overview_data <- list()
 
   for(i in 1:length(directories)){
     path = directories[i]
-    files <- list.files(path, full.names = T, pattern = opt$overview)
+    files <- list.files(path, full.names = T, pattern = "overview.*tif")
     if(length(files) >0){
       overview_data[[i]] <- str_extract(path, "([^/]+$)")
       message(paste0("Stacking ",overview_data[[i]], " data (element ", i, " of ", length(directories), ")..."))
@@ -139,19 +112,19 @@ if(!is.na(opt$overview)){
   names(overview_brick) <- unlist(overview_data)
 
   message("...complete. Writing overview x-ray brick...")
-  if(!is.na(opt$out)){
-    dir.create(opt$out)
-    if(!is.na(opt$n)){
-      out_brick <- writeRaster(overview_brick, paste0(opt$out, "/", opt$n,"_overview_brick.grd"), overwrite=TRUE, format="raster")
-      x <- writeRaster(overview_brick, paste0(opt$out, "/", opt$n,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+  if(!is.na(outname)){
+    dir.create(outname)
+    if(!is.na(samplename)){
+      out_brick <- writeRaster(overview_brick, paste0(outname, "/", samplename,"_overview_brick.grd"), overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, paste0(outname, "/", samplename,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
     }else{
-      out_brick <- writeRaster(overview_brick, path = opt$out, "overview_brick.grd", overwrite=TRUE, format="raster")
-      x <- writeRaster(overview_brick, path = opt$out, "overview_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+      out_brick <- writeRaster(overview_brick, path = outname, "overview_brick.grd", overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, path = outname, "overview_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
     }
   }else{
-    if(!is.na(opt$n)){
-      out_brick <- writeRaster(overview_brick, paste0(opt$n,"_overview_brick.grd"), overwrite=TRUE, format="raster")
-      x <- writeRaster(overview_brick, paste0(opt$n,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
+    if(!is.na(samplename)){
+      out_brick <- writeRaster(overview_brick, paste0(samplename,"_overview_brick.grd"), overwrite=TRUE, format="raster")
+      x <- writeRaster(overview_brick, paste0(samplename,"_overview_brick.tif"), overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
     }else{
       out_brick <- writeRaster(overview_brick, "overview_brick.grd", overwrite=TRUE, format="raster")
       x <- writeRaster(overview_brick, "overview_brick.tif", overwrite=TRUE, format="GTiff",options=c("INTERLEAVE=BAND","COMPRESS=LZW"))
@@ -169,16 +142,12 @@ remove(list = c("x", "xray_brick_list", "xray_data", "overview_brick_list", "ove
 
 # create base SEM image ---------------------------------------------------
   
-if(!is.na(opt$b)){
-  SEM_images <- list.files(opt$b, full.names = T, pattern = opt$m)
-}else{
-  message("Please provide a file path for your SEM images to stitch. For help, see 'dataStitchR.R --help.'")
-  break
-}
 
-if(!is.na(opt$y)){
-  SEM_images  <- SEM_images[!str_detect(SEM_images , opt$y)]
-}
+SEM_images <- list.files(paste0(filename, "/SEM_images"), full.names = T, pattern = ".tif")
+
+
+SEM_images  <- SEM_images[!str_detect(SEM_images , "overview")]
+
 SEM_panorama <- list()
 
 message("Stitching SEM images into panorama...")
@@ -196,15 +165,15 @@ message("...complete.")
 message("Writing SEM panoramic raster...")
 
 
-if(!is.na(opt$out)){
-  if(!is.na(opt$n)){
-    writeRaster(SEM_panorama_merged, paste0(opt$out, "/", opt$n,"_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
+if(!is.na(outname)){
+  if(!is.na(samplename)){
+    writeRaster(SEM_panorama_merged, paste0(outname, "/", samplename,"_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
   }else{
-    writeRaster(SEM_panorama_merged, path = opt$out, "SEM_pano.tif", overwrite=TRUE, format = "GTiff")
+    writeRaster(SEM_panorama_merged, path = outname, "SEM_pano.tif", overwrite=TRUE, format = "GTiff")
   }
 }else{
-  if(!is.na(opt$n)){
-    writeRaster(SEM_panorama_merged, paste0(opt$n, "_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
+  if(!is.na(samplename)){
+    writeRaster(SEM_panorama_merged, paste0(samplename, "_SEM_pano.tif"), overwrite=TRUE, format = "GTiff")
   }else{
     writeRaster(SEM_panorama_merged, "SEM_pano.tif", overwrite=TRUE, format = "GTiff")
   }
@@ -216,15 +185,11 @@ message("...complete.")
 
 # create SEM overview raster ----------------------------------------------
 
-if(!is.na(opt$overview)){
-  if(!is.na(opt$b)){
-    SEM_images <- list.files(opt$b, full.names = T, pattern = opt$m)
-  }else{
-    message("Please provide a file path for your SEM images to stitch. For help, see 'dataStitchR.R --help.'")
-    break
-  }
+if(stitch_overview)){
+  SEM_images <- list.files(paste0(filename, "/SEM_images"), full.names = T, pattern = ".tif")
+
   message("Creating overview SEM raster image...")
-  SEM_images <- SEM_images[str_detect(SEM_images , opt$overview)]
+  SEM_images <- SEM_images[str_detect(SEM_images , "overview.*tif")]
   image <- raster(SEM_images)
   image_extent <- extent(matrix(c(0, 1024, 0, 704), nrow = 2, ncol = 2, byrow = T))
   image_raster <- setExtent(raster(nrows = 704, ncols = 1024), image_extent, keepres = F)
@@ -234,139 +199,17 @@ if(!is.na(opt$overview)){
   message("Writing overview SEM raster...")
   
   
-  if(!is.na(opt$out)){
-    if(!is.na(opt$n)){
-      writeRaster(SEM_image, paste0(opt$out, "/", opt$n,"_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
+  if(!is.na(outname)){
+    if(!is.na(samplename)){
+      writeRaster(SEM_image, paste0(outname, "/", samplename,"_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
     }else{
-      writeRaster(SEM_image, path = opt$out, "SEM_overview.tif", overwrite=TRUE, format = "GTiff")
+      writeRaster(SEM_image, path = outname, "SEM_overview.tif", overwrite=TRUE, format = "GTiff")
     }
   }else{
-    if(!is.na(opt$n)){
-      writeRaster(SEM_image, paste0(opt$n, "_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
+    if(!is.na(samplename)){
+      writeRaster(SEM_image, paste0(samplename, "_SEM_overview.tif"), overwrite=TRUE, format = "GTiff")
     }else{
       writeRaster(SEM_image, "SEM_overviewo.tif", overwrite=TRUE, format = "GTiff")
     }
   }
-}
-
-
-
-#flush everything we don't need from memory
-remove(list = c("SEM_panorama", "SEM_images", "image", "image_extent", "image_raster"))
-
-#optinal plot to check if SEM image merge looks correct 
-#plot(SEM_panorama_merged, col = gray.colors(10, start = 0.3, end = 0.9, gamma = 2.2, alpha = NULL))
-
-
-# plot the data -----------------------------------------------------------
-if(opt$p){
-message("Generating plot...")
-# Set color palette
-
-#palette source: https://sciencenotes.org/molecule-atom-colors-cpk-colors/
-
-element_colors <- c("#FFFFFF", "#D9FFFF", "#CC80FF", "#C2FF00", "#FFB5B5", "#909090", "#3050F8",
-                    "#FF0D0D", "#90E050", "#B3E3F5", "#AB5CF2", "#8AFF00", "#BFA6A6", "#F0C8A0",
-                    "#FF8000", "#FFFF30", "#1FF01F", "#80D1E3", "#8F40D4", "#3DFF00", "#E6E6E6",
-                    "#BFC2C7", "#A6A6AB", "#8A99C7", "#9C7AC7", "#E06633", "#F090A0", "#50D050",
-                    "#C88033", "#7D80B0", "#C28F8F", "#668F8F", "#BD80E3", "#FFA100", "#A62929",
-                    "#5CB8D1", "#702EB0", "#00FF00", "#94FFFF", "#94E0E0", "#73C2C9", "#54B5B5",
-                    "#3B9E9E", "#248F8F", "#0A7D8C", "#006985", "#C0C0C0", "#FFD98F", "#A67573",
-                    "#668080", "#9E63B5", "#D47A00", "#940094", "#429EB0", "#57178F", "#00C900",
-                    "#70D4FF", "#FFFFC7", "#D9FFC7", "#C7FFC7", "#A3FFC7", "#8FFFC7", "#61FFC7",
-                    "#45FFC7", "#30FFC7", "#1FFFC7", "#00FF9C", "#00E675", "#00D452", "#00BF38",
-                    "#00AB24", "#4DC2FF", "#4DA6FF", "#2194D6", "#267DAB", "#266696", "#175487",
-                    "#D0D0E0", "#FFD123", "#B8B8D0", "#A6544D", "#575961", "#9E4FB5", "#AB5C00",
-                    "#754F45", "#428296", "#420066", "#007D00", "#70ABFA", "#00BAFF", "#00A1FF",
-                    "#008FFF", "#0080FF", "#006BFF", "#545CF2", "#785CE3", "#8A4FE3", "#A136D4",
-                    "#B31FD4", "#B31FBA", "#B30DA6", "#BD0D87", "#C70066", "#CC0059", "#D1004F",
-                    "#D90045", "#E00038", "#E6002E", "#EB0026")
-names(element_colors) <- c("H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne", "Na", "Mg", "Al", "Si",
-                           "P",  "S",  "Cl", "Ar", "K",  "Ca", "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni",
-                           "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr", "Nb", "Mo",
-                           "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I",  "Xe", "Cs", "Ba",
-                           "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-                           "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po",
-                           "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf",
-                           "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt")
-
-xray_frame <- as.data.frame(xray_brick, xy=TRUE) 
-xray_frame <- gather(xray_frame, element, value, colnames(xray_frame)[3]:colnames(xray_frame)[ncol(xray_frame)])
-
-
-
-element_plotter<-function(coord_frame, brick, SEM_image, colors){
-  p <-rasterVis::gplot(SEM_image) +
-    geom_tile(aes(fill = value)) +
-    scale_fill_gradient(low = 'black', high = 'white') +
-    ggnewscale::new_scale_fill()
-  for(i in names(brick)){ 
-    message(paste0("Adding ", names(brick[[i]]), " to plot..."))
-    element_coords <- coord_frame %>%
-      filter(element == names(brick[[i]]) & value!=0)
-    p <- p+geom_raster(element_coords, mapping = aes(x, y, fill = element, alpha = value)) +
-      scale_fill_manual(values = colors) +
-      ggnewscale::new_scale_fill()
-  }
-  message("Writing plot...")
-  suppressWarnings(print(p + 
-                           coord_fixed() +
-                           theme(axis.title = element_blank(),
-                                 axis.text = element_blank(),
-                                 legend.position = "none")))
-}
-
-element_plot <- element_plotter(xray_frame, xray_brick, SEM_panorama_merged, element_colors)
-
-element_plot_legend <- data.frame(element = unique(xray_frame$element)) %>%
-  rownames_to_column() %>% 
-  ggplot(aes(element, rowname, fill=element)) + 
-  geom_bar(stat= "identity") + 
-  scale_fill_manual(values = element_colors) +
-  guides(fill=guide_legend(nrow=2)) +
-  theme(legend.title = ggplot2::element_blank(),
-        legend.text = ggplot2::element_text(size = 8))
-
-element_plot_with_legend <- plot_grid(
-  element_plot, 
-  plot_grid(get_legend(element_plot_legend), 
-            ncol = 1), 
-  nrow = 2, 
-  rel_heights = c(8,2)
-)
-
-
-# generate PDF ------------------------------------------------------------
-
-if(!is.na(opt$n)){
-  if(!is.na(opt$out)){
-    pdf(paste0(opt$out, "/", opt$n, "_element_plot.pdf"),
-        width = 13.33, 
-        height = 7.5)
-  }else{
-    pdf(paste0(opt$n, "_element_plot.pdf"),
-        width = 13.33, 
-        height = 7.5)
-  }
-}else{
-  if(!is.na(opt$out)){
-    pdf(paste0(opt$out, "/", "element_plot.pdf"),
-        width = 13.33, 
-        height = 7.5)
-  }else{
-    pdf("element_plot.pdf",
-        width = 13.33, 
-        height = 7.5) 
-  }
-}
-
-
-print(element_plot_with_legend)
-
-dev.off()
-
-message("...complete.")
-
-remove(list = ls())
-
 }
