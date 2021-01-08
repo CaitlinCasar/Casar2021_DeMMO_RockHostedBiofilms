@@ -2,20 +2,10 @@ pacman::p_load(qiime2R, tidyverse, lubridate, randomcoloR, vegan)
 
 asv_table <-read_qza("../data/asvs/Casar2021-asv-table-rarefied-47468.qza")
 metadata <-read_csv("../data/metadata.csv")
-asv_table_unrarefied <-read_qza("../data/asvs/Osburn2020-asv-table.qza")
 taxonomy <- read_qza("../data/asvs/Osburn2020-taxonomy-Silva138.qza")
-asvs <-read_qza("../data/asvs/Osburn2020-rep-seqs.qza")
 
 asv_seqs <- data.frame(asvs$data, check.names = F) %>%
   rownames_to_column("Feature.ID")
-
-#number of reads per sample
-read_summary <- data.frame(asv_table_unrarefied$data, check.names = F) %>%
-  rownames_to_column("Feature.ID") %>%
-  pivot_longer(-Feature.ID, names_to = "sample_id", values_to = "abundance") %>%
-  group_by(sample_id) %>%summarise(dada2_reads = sum(abundance)) %>%
-  mutate(sample_id = str_replace_all(sample_id, "_", ".")) %>%
-  inner_join(metadata %>%select(sample_id) %>% distinct()) 
 
 asv_abundance <- data.frame(asv_table$data, check.names = F) %>%
   rownames_to_column("Feature.ID") %>%
@@ -29,6 +19,8 @@ asv_abundance <- data.frame(asv_table$data, check.names = F) %>%
   separate(taxonomy ,sep=';',c("domain", "phylum", "class", "order", "family", "genus", "species"))
 
 write_delim(asv_abundance, "../data/asvs/rarefied_asv_abundance.txt", delim = "\t")
+
+
 
 n_asvs <- length(unique(asv_abundance$Feature.ID))
 
