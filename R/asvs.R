@@ -9,7 +9,7 @@ asvs <-read_qza("../data/asvs/Osburn2020-rep-seqs.qza")
 asv_seqs <- data.frame(asvs$data, check.names = F) %>%
   rownames_to_column("Feature.ID")
 
-#compare read joining between PEAR and dada2
+#number of reads per sample
 read_summary <- data.frame(asv_table_unrarefied$data, check.names = F) %>%
   rownames_to_column("Feature.ID") %>%
   pivot_longer(-Feature.ID, names_to = "sample_id", values_to = "abundance") %>%
@@ -31,7 +31,6 @@ asv_abundance <- data.frame(asv_table$data, check.names = F) %>%
 write_delim(asv_abundance, "../data/asvs/rarefied_asv_abundance.txt", delim = "\t")
 
 n_asvs <- length(unique(asv_abundance$Feature.ID))
-n_otus <- length(unique(otu_table$`#OTU ID`))
 
 
 family_abundance <- asv_abundance %>%
@@ -60,7 +59,6 @@ dominant_fams <- family_abundance %>%
   bind_rows(less_abundant_taxa)
 
 write_delim(asv_abundance, "../data/asvs/dominant_fams.txt", delim = "\t")
-
 
 #palette
 palette <- distinctColorPalette(k = length(unique(dominant_fams$family)), altCol = FALSE, runTsne = FALSE)
@@ -93,7 +91,7 @@ bar_plot <- dominant_fams %>%
   facet_grid(cols = vars(site), rows = vars(substrate), switch = "y") + 
   guides(fill = guide_legend(ncol = 1))
 
-plotly::ggplotly(bar_plot)
+#plotly::ggplotly(bar_plot)
 
 phyla_plot <- asv_abundance %>%
   mutate(phylum = if_else(phylum == "Proteobacteria", class, phylum)) %>%
@@ -112,7 +110,7 @@ phyla_plot <- asv_abundance %>%
   facet_grid(cols = vars(site), rows = vars(substrate), switch = "y") + 
   guides(fill = guide_legend(ncol = 1))
 
-plotly::ggplotly(phyla_plot)
+#plotly::ggplotly(phyla_plot)
 
 
 # Get dominant asv’s for comparing to blast database ------------------------
@@ -160,7 +158,7 @@ NMDS_plot <- NMDS_coords %>%
   theme(legend.key.size = unit(.5, "cm"))
 
 #visualize interactive plot
-plotly::ggplotly(NMDS_plot)
+#plotly::ggplotly(NMDS_plot)
 
 
 #plot community data
@@ -235,11 +233,11 @@ gridExtra::grid.arrange(D1_simper_plot, D1_simp_freq_plot, nrow = 1, widths = c(
 # rarefaction curves ------------------------------------------------------
 
 # load collated alpha div data
-data_path <- "../data/asvs/rarefaction_data/data"   # path to the data
+data_path <- "../data/asvs/rarefaction"   # path to the data
 files <- dir(data_path, pattern = "*.csv", full.names = T) # get file names
 
 alpha_div = tibble::tibble(File = files) %>%
-  tidyr::extract(File, "method", "(?<=/data/asvs/rarefaction_data/data/)(.*)(?=[.]csv)", remove = FALSE) %>%
+  tidyr::extract(File, "method", "(?<=/data/asvs/rarefaction/)(.*)(?=[.]csv)", remove = FALSE) %>%
   mutate(Data = lapply(File, read_csv)) %>%
   tidyr::unnest(Data) %>%
   select(-File, -site, -trip, -note, -date) %>% 
@@ -264,6 +262,6 @@ rarefaction_curve <- alpha_div %>%
   facet_wrap( ~ method, ncol=2, scales = "free") +
   guides(colour = guide_legend(title = "substrate"))
 
-rarefaction_curve
-plotly::ggplotly(rarefaction_curve)
+#rarefaction_curve
+#plotly::ggplotly(rarefaction_curve)
 

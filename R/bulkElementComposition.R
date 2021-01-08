@@ -1,6 +1,6 @@
 pacman::p_load(tidyverse, raster)
 
-directories <- list.dirs("/Volumes/Elements/DeMMO/DeMMO_Publications/DeMMO_NativeRock/data/Dec2019/DeMMO2019_lowMagXEDS", full.names = T , recursive =T)
+directories <- list.dirs("../data/DeMMO2019_lowMagXEDS", full.names = T , recursive =T)
 directories <- directories[2:length(directories)]
 
 #function to read in raster stack into dataframe, convert from rgb to binary
@@ -45,7 +45,6 @@ element_calculator <- function(coupon){
   }
 }
 
-#
 coupon_list <- lapply(coupon_sites, element_calculator)
 
 chemistry_data <- reduce(coupon_list, bind_rows) %>%
@@ -61,8 +60,7 @@ chemistry_data <- reduce(coupon_list, bind_rows) %>%
   mutate(total = sum(abundance),
          rel_abundance = (abundance/total)*100)
 
-#palette source: https://sciencenotes.org/molecule-atom-colors-cpk-colors/
-
+#create color palette
 element_colors <- c("#383636", "#f9d2d2", "#d76384", "#d19fc9", "#993721", "#f8c045", "#fbebac", "#dfe452", 
                     "#ead934", "#9ccb3c", "#4da146", "#5cbf91", "#5cbee0", "#5d6ab1", "#9782bc", "#b476b2",
                     "#bab9b9", "#848589", "#8eb397", "#4c7070")
@@ -76,4 +74,6 @@ rock_composition_plot <- chemistry_data %>%
   geom_bar(stat = "identity", position = "fill") +
   scale_fill_manual(values = element_colors)
 
-plotly::ggplotly(plot)
+#plotly::ggplotly(plot)
+
+#write_delim(chemistry_data, "../data/bulkElementComposition.txt", delim = "\t")

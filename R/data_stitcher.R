@@ -2,16 +2,16 @@
 pacman::p_load(raster, magick, tidyverse, rasterVis, ggnewscale, Hmisc, cowplot)
 
 #create list all sub-directories within main directory
-directories <- list.dirs(filename, full.names = T , recursive =F)
+directories <- list.dirs(paste0(filename, "/xray_data"), full.names = T , recursive =F)
 
 directories <- directories[!str_detect(directories, "Unknown|SEM|Os")]
 
 
 
 #set image coordinates
-xy <- read_delim(paste0(filename, "../coordinates.txt"), delim = "\t", col_types = cols())
+xy <- read_delim(paste0(filename, "/coordinates.txt"), delim = "\t", col_types = cols())
 positions <- xy %>%
-  select(-x, -y)
+  dplyr::select(-x, -y)
 
 message(paste0("Importing data from ", samplename, "..."))
 
@@ -143,7 +143,7 @@ remove(list = c("x", "xray_brick_list", "xray_data", "overview_brick_list", "ove
 # create base SEM image ---------------------------------------------------
   
 
-SEM_images <- list.files(paste0(filename, "/SEM_images"), full.names = T, pattern = ".tif")
+SEM_images <- list.files(paste0(filename, "/xray_data/SEM_images"), full.names = T, pattern = ".tif")
 
 
 SEM_images  <- SEM_images[!str_detect(SEM_images , "overview")]
@@ -185,8 +185,8 @@ message("...complete.")
 
 # create SEM overview raster ----------------------------------------------
 
-if(stitch_overview)){
-  SEM_images <- list.files(paste0(filename, "/SEM_images"), full.names = T, pattern = ".tif")
+if(stitch_overview){
+  SEM_images <- list.files(paste0(filename, "/xray_data/SEM_images"), full.names = T, pattern = ".tif")
 
   message("Creating overview SEM raster image...")
   SEM_images <- SEM_images[str_detect(SEM_images , "overview.*tif")]
