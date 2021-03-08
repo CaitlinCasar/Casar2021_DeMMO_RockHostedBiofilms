@@ -4,8 +4,6 @@ asv_table <-read_qza("../data/asvs/Casar2021-asv-table-rarefied-47468.qza")
 metadata <-read_csv("../data/metadata.csv")
 taxonomy <- read_qza("../data/asvs/Osburn2020-taxonomy-Silva138.qza")
 
-asv_seqs <- data.frame(asvs$data, check.names = F) %>%
-  rownames_to_column("Feature.ID")
 
 asv_abundance <- data.frame(asv_table$data, check.names = F) %>%
   rownames_to_column("Feature.ID") %>%
