@@ -11,4 +11,4 @@ All scripts can be run from the `batch.R` file which includes variables that can
 
 ### Raw SEM/XEDS data download
 
-The file_path variable in `batch.R` references a data folder containing raw SEM/XEDS data required for panoramic image stiching. [DeMMO1](https://figshare.com/articles/dataset/Panoramic_SEM_XEDS_data_for_DeMMO1/14182853){:target="_blank"} and [DeMMO3](https://figshare.com/articles/dataset/Panoramic_SEM_XEDS_data_for_DeMMO3/14188163){:target="_blank"} SEM/XEDS data are available on Figshare under DOIs `10.6084/m9.figshare.14182853` and `10.6084/m9.figshare.14188163`, respectively. 
+The file_path variable in `batch.R` references a data folder containing raw SEM/XEDS data required for panoramic image stiching. [DeMMO1](https://figshare.com/articles/dataset/Panoramic_SEM_XEDS_data_for_DeMMO1/14182853) and [DeMMO3](https://figshare.com/articles/dataset/Panoramic_SEM_XEDS_data_for_DeMMO3/14188163) SEM/XEDS data are available on Figshare under DOIs `10.6084/m9.figshare.14182853` and `10.6084/m9.figshare.14188163`, respectively. 
